@@ -56,8 +56,8 @@ even gets written to the access log. Miserable to debug; easy to avoid.
 ## Quick start
 
 ```bash
-export AWS_PROFILE=<the profile for the target account>
 aws login                        # sessions expire; every script guards for this
+# export AWS_PROFILE=<name>      # only if targeting a non-default profile
 
 ./infra/provision.sh             # one-time, idempotent
 ./infra/members.sh add abel@example.com "Abel Morara" "CTO"

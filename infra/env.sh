@@ -6,8 +6,11 @@
 
 set -euo pipefail
 
-: "${AWS_PROFILE:?set AWS_PROFILE to the profile for the target account}"
-export AWS_PROFILE
+# AWS_PROFILE is optional: set it to target a specific profile, otherwise the
+# CLI's own resolution applies (the `default` profile). Requiring it explicitly
+# was pure friction — the identity guard below catches the case that actually
+# matters, which is not having a valid session at all.
+[ -n "${AWS_PROFILE:-}" ] && export AWS_PROFILE
 export AWS_REGION="${AWS_REGION:-us-east-1}"      # CloudFront Functions, OAC and ACM
                                                   # all have their control plane here
 

@@ -13,16 +13,16 @@ For the document's content and conventions, see [`CLAUDE.md`](CLAUDE.md).
 
 ## Before any command
 
-Every script needs an AWS session and the profile name. Sessions expire — if a
-script says *"no valid AWS session"*, this is why.
+Every script needs a valid AWS session. Sessions expire — if a script says
+*"no valid AWS session"*, that's why:
 
 ```bash
 cd ~/Documents/FixOnCall/ibuni-fix-on-call
 aws login                       # opens a browser
-export AWS_PROFILE=default      # do this once per terminal
 ```
 
-Everything below assumes those two lines have been run.
+That's it. The scripts use your default AWS profile; set `AWS_PROFILE` only if
+you need to target a different one.
 
 > **`gh` not found?** It's installed but not on Git Bash's PATH:
 > `export PATH="$PATH:/c/Program Files/GitHub CLI"`
