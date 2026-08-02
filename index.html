@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Fix On Call — Platform Overview</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,10 +29,18 @@
     --maxw:1200px;
     --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
     --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    /* height of the *pinned* page chrome. JS keeps this in sync with the measured
+       nav (see syncChrome) — anchor jumps and the placing banner both key off it. */
+    --chrome-h:108px;
+    --kb:0px;                 /* on-screen keyboard height (mobile, visualViewport) */
   }
 
   *{margin:0;padding:0;box-sizing:border-box}
-  html{scroll-behavior:smooth;scroll-padding-top:108px}
+  html{
+    scroll-behavior:smooth;
+    scroll-padding-top:calc(var(--chrome-h) + 16px);
+    -webkit-text-size-adjust:100%;    /* stop iOS inflating text on rotation */
+  }
   body{
     font-family:var(--sans);
     background:var(--paper);
@@ -42,6 +50,11 @@
     overflow-x:hidden;
   }
   ::selection{background:var(--red);color:#fff}
+
+  /* touch hygiene — no blue flash, no long-press callout on controls */
+  *{-webkit-tap-highlight-color:transparent}
+  button,a,.gloss,.step,.cmt-tag,.chip,.reg,.sys-chip,.path-chip{-webkit-touch-callout:none}
+  nav,.mob-bar,.cmt-rail-head,.cmt-place-banner,.step{user-select:none;-webkit-user-select:none}
 
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 32px}
   @media(max-width:640px){.wrap{padding:0 20px}}
@@ -64,7 +77,8 @@
     border-bottom:1px solid transparent;transition:border-color .3s,background .3s;
   }
   nav.scrolled{border-color:var(--line);background:rgba(246,247,249,.94)}
-  .nav-inner{max-width:var(--maxw);margin:0 auto;padding:10px 32px;display:flex;flex-direction:column;gap:8px}
+  .nav-inner{max-width:var(--maxw);margin:0 auto;padding:10px 32px;display:flex;flex-direction:column;gap:8px;
+    padding-top:calc(10px + env(safe-area-inset-top))}
   .nav-row{display:flex;align-items:center}
   .nav-row-top{justify-content:space-between;gap:24px}
   .nav-row-links{justify-content:flex-start;border-top:1px solid var(--line);padding-top:8px}
@@ -327,7 +341,7 @@
   .doc-note{background:#FBF3E2;border:1px solid #ECD9AE;border-left:4px solid var(--gold);border-radius:0 10px 10px 0;padding:14px 18px;margin:0 0 8px;font-size:.95rem;font-weight:600;color:#57482B}
 
   /* ---------- footer ---------- */
-  footer{background:var(--navy-deep);color:#93A0B5;padding:60px 0 40px}
+  footer{background:var(--navy-deep);color:#93A0B5;padding:60px 0 calc(40px + env(safe-area-inset-bottom))}
   .foot-meta{display:flex;gap:40px;flex-wrap:wrap;font-size:.78rem}
   .foot-meta div span{display:block;color:#64738C;text-transform:uppercase;letter-spacing:.1em;font-size:.66rem;margin-bottom:5px}
   .foot-meta div b{color:#C3CCDA;font-weight:600;font-size:.86rem}
@@ -379,7 +393,8 @@
   body.cmt-placing .cmt-eligible{outline:2px dashed rgba(255,77,58,.55);outline-offset:2px;border-radius:6px;transition:outline-color .12s,background .12s}
   body.cmt-placing .cmt-eligible.cmt-hot{outline:3px solid var(--red);outline-offset:2px;background:rgba(255,77,58,.10)}
   .cmt-place-banner{
-    position:fixed;left:50%;top:78px;transform:translateX(-50%);z-index:1410;
+    /* keyed off the measured chrome — the old fixed 78px sat *under* the real nav */
+    position:fixed;left:50%;top:calc(var(--chrome-h) + 10px);transform:translateX(-50%);z-index:1410;
     background:var(--navy-deep);color:#fff;font-size:.84rem;font-weight:500;
     padding:9px 18px;border-radius:24px;box-shadow:0 14px 36px -16px rgba(0,0,0,.5);
     display:flex;align-items:center;gap:14px;
@@ -391,7 +406,7 @@
 
   /* popover ----------------------------------------------------------- */
   .cmt-pop{
-    position:fixed;z-index:1200;width:340px;max-width:calc(100vw - 24px);
+    position:fixed;z-index:1200;width:340px;max-width:calc(100dvw - 24px);
     background:var(--card);border:1px solid var(--line);border-radius:14px;
     box-shadow:0 26px 60px -20px rgba(8,11,20,.6);
     opacity:0;visibility:hidden;transform:translateY(6px);
@@ -407,7 +422,7 @@
   .cmt-pop-head .pt{font-family:var(--serif);font-size:1rem;font-weight:500;color:var(--navy);line-height:1.25}
   .cmt-x{background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:1.3rem;line-height:1;padding:0 2px;flex-shrink:0}
   .cmt-x:hover{color:var(--navy)}
-  .cmt-list{max-height:42vh;overflow-y:auto;padding:6px 16px}
+  .cmt-list{max-height:min(42dvh,360px);overflow-y:auto;padding:6px 16px;overscroll-behavior:contain}
   .cmt-empty{font-size:.86rem;color:var(--ink-soft);padding:16px 0;text-align:center}
   .cmt-item{padding:13px 0;border-top:1px solid var(--line)}
   .cmt-item:first-child{border-top:none}
@@ -457,7 +472,7 @@
 
   /* right-hand rail --------------------------------------------------- */
   .cmt-rail{
-    position:fixed;top:0;right:0;bottom:0;width:380px;max-width:88vw;z-index:1100;
+    position:fixed;top:0;right:0;bottom:0;width:380px;max-width:88dvw;z-index:1100;
     background:var(--paper);border-left:1px solid var(--line);
     box-shadow:-20px 0 50px -30px rgba(8,11,20,.5);
     transform:translateX(100%);transition:transform .32s cubic-bezier(.2,.7,.2,1);
@@ -476,7 +491,7 @@
     border-radius:16px;padding:4px 12px;
   }
   .cmt-rail-filters button.on{background:var(--red);color:#fff;border-color:var(--red)}
-  .cmt-rail-body{flex:1;overflow-y:auto;padding:8px 0 30px}
+  .cmt-rail-body{flex:1;overflow-y:auto;padding:8px 0 30px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   .cmt-rail-sec{padding:16px 22px 4px}
   .cmt-rail-sec .secn{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--red-ink)}
   .cmt-rail-block{padding:12px 22px;border-top:1px solid var(--line);cursor:pointer;transition:background .15s}
@@ -490,7 +505,285 @@
     opacity:0;visibility:hidden;transition:opacity .3s;
   }
   .cmt-rail-backdrop.show{opacity:1;visibility:visible}
-  @media(max-width:520px){.cmt-rail{width:100%;max-width:100%}}
+
+  /* popover backdrop — separate element from the rail's, which owns closeRail() */
+  .cmt-pop-backdrop{
+    position:fixed;inset:0;z-index:1190;background:rgba(8,11,20,.32);
+    opacity:0;visibility:hidden;transition:opacity .25s;
+  }
+  .cmt-pop-backdrop.show{opacity:1;visibility:visible}
+
+  /* bottom action bar host. `display:contents` on desktop means the .cmt-fab inside
+     it still positions against the viewport — desktop behaviour is unchanged. */
+  .mob-bar{display:contents}
+
+  /* ====================================================================
+     MOBILE  (≤768px) — the native layer.
+     Appended last on purpose: it wins on source order, so nothing above
+     needs re-specifying. Everything here is CSS-only; no markup inside
+     #doc-content changes (see CLAUDE.md → anchor stability).
+     ==================================================================== */
+  @media(max-width:768px){
+
+    /* --- rhythm: desktop uses 104px section padding; that reads as a shrunken
+           desktop page on a phone. Halve the vertical scale throughout. ------ */
+    .wrap{padding:0 20px}
+    section{padding:56px 0}
+    .hero{padding:calc(var(--chrome-h) + 28px) 0 56px}
+    .hero-sub{margin-top:20px}
+    .hero-stats{gap:22px 30px;margin-top:32px;padding-top:24px}
+    .stat .v{font-size:1.75rem}
+    .lede{font-size:1.02rem;margin-top:16px}
+    .callout{padding:20px 22px;margin-top:26px;border-radius:0 10px 10px 0}
+    .open-q{padding:14px 16px;margin-top:18px}
+    .sec-head{margin-bottom:10px}
+    .grid-4{margin-top:32px}
+    .principle{padding:24px 20px}
+    .goals{margin-top:28px}
+    .goal{padding:20px 0}
+    .persona-grid{margin-top:32px;gap:16px}
+    .persona{padding:24px 20px}
+    .arch{margin-top:34px}
+    .arch-group{margin-top:32px}
+    .sys{padding:22px 20px}
+    .comp-grid{margin-top:30px;gap:14px}
+    .comp{padding:22px 20px}
+    .comp-strip{margin-top:26px}
+    .role-grid{margin-top:28px;gap:12px}
+    .role-card{padding:20px 18px}
+    .cadence{margin-top:16px}
+    .cad{padding:16px 18px}
+    .flow{margin-top:32px}
+    .flow-detail{margin-top:22px;padding:22px 20px;border-radius:0 10px 10px 0}
+    .doc-list{margin-top:26px}
+    .doc-card{padding:16px 18px}
+    .glossary{margin-top:30px}
+    .gloss-item{padding:18px 0}
+    .money{margin-top:24px}
+    .money-node{padding:18px 20px}
+    .road{margin-top:34px}
+    /* the footer absorbs the action bar's height, so the dark band runs to the
+       bottom edge — padding on <body> would leave a pale strip under it */
+    footer{padding:44px 0 calc(92px + env(safe-area-inset-bottom))}
+    .foot-meta{gap:20px 28px}
+
+    /* roadmap rail — the three values must agree: both centres land on 15px */
+    .road::before{left:14px}
+    .phase{padding:0 0 34px 42px}
+    .phase-dot{left:5px;top:3px;width:20px;height:20px;border-width:3px}
+
+    /* --- native app chrome: slim brand row + pinned section chip rail ------ */
+    .nav-inner{padding:8px 20px;gap:6px}
+    .nav-row-top{transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s;will-change:transform}
+    /* hide the brand row on scroll-down, reveal on scroll-up. The chip rail stays
+       pinned so --chrome-h remains measurable (a transform doesn't resize the box). */
+    nav.nav-up .nav-row-top{transform:translateY(-100%);opacity:0;pointer-events:none;
+      height:0;margin-bottom:-6px;overflow:hidden}
+    .brand-word{font-size:.98rem}
+    .nav-row-links{padding-top:6px}
+    .nav-links{
+      flex-wrap:nowrap;overflow-x:auto;gap:6px;
+      scroll-snap-type:x proximity;scroll-padding-inline:20px;
+      padding:2px 20px;margin:0 -20px;
+      -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+      scrollbar-width:none;
+    }
+    .nav-links::-webkit-scrollbar{display:none}
+    .nav-links a{
+      flex:0 0 auto;scroll-snap-align:center;
+      padding:9px 14px;min-height:40px;display:flex;align-items:center;
+      font-size:.82rem;border-radius:20px;background:var(--card);
+      border:1px solid var(--line);color:var(--ink-soft);white-space:nowrap;
+      transition:background .2s,color .2s,border-color .2s;
+    }
+    .nav-links a.active{background:var(--navy);border-color:var(--navy);color:#fff}
+    .nav-links a.active::after{display:none}     /* the fill is the indicator now */
+
+    /* --- bottom action bar (thumb zone) --------------------------------- */
+    .mob-bar{
+      display:flex;position:fixed;left:0;right:0;bottom:0;z-index:1150;gap:10px;
+      padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+      background:rgba(246,247,249,.92);backdrop-filter:blur(14px);
+      border-top:1px solid var(--line);
+    }
+    .cmt-fab{
+      position:static;flex:1;justify-content:center;
+      min-height:50px;border-radius:14px;box-shadow:none;padding:13px 18px;
+    }
+    /* the rail is a full-screen panel — the action bar must not float over it */
+    body.rail-open .mob-bar{display:none}
+    .cmt-fab:hover{transform:none}
+
+    /* --- comment popover → bottom sheet ---------------------------------
+       The sheet IS .cmt-pop (not a wrapper) so the outside-click guard
+       `!pop.contains(e.target)` keeps working — a wrapper would close the
+       sheet on every tap of its own chrome. --------------------------- */
+    .cmt-pop{
+      left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;
+      border-radius:20px 20px 0 0;border-bottom:none;
+      max-height:88dvh;display:flex;flex-direction:column;
+      transform:translateY(100%) translateY(calc(-1 * var(--kb)));
+      transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .2s;
+      padding-bottom:env(safe-area-inset-bottom);
+      box-shadow:0 -18px 50px -18px rgba(8,11,20,.5);
+    }
+    .cmt-pop.show{transform:translateY(calc(-1 * var(--kb)))}
+    .cmt-pop.dragging{transition:none}
+    /* touch-action:none only on the drag grip — putting it on the sheet would
+       block scrolling the thread and the textarea */
+    .cmt-pop-head{padding-top:24px;position:relative;touch-action:none}
+    .cmt-pop-head::before{                        /* drag handle — no DOM change */
+      content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);
+      width:38px;height:4px;border-radius:2px;background:var(--line);
+    }
+    .cmt-pop-head .pt{font-size:1.06rem}
+    .cmt-list{max-height:none;flex:1;padding:6px 18px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+    .cmt-form{padding:14px 18px calc(14px + env(safe-area-inset-bottom))}
+    /* 16px minimum — anything smaller and iOS Safari zooms the page on focus
+       and never zooms back out. */
+    .cmt-form input,.cmt-form textarea{font-size:16px;padding:12px 13px;border-radius:10px}
+    .cmt-form textarea{min-height:84px}
+    .cmt-submit{min-height:48px;font-size:.95rem;border-radius:10px}
+    .cmt-item{padding:15px 0}
+    .cmt-body{font-size:.94rem}
+
+    /* --- glossary tip → bottom-anchored card ---------------------------- */
+    /* showTip() clears its inline left/top on mobile, so no !important needed */
+    .gloss-tip{
+      left:12px;right:12px;top:auto;
+      bottom:calc(74px + env(safe-area-inset-bottom));
+      max-width:none;width:auto;font-size:.92rem;line-height:1.55;
+      padding:16px 18px;border-radius:14px;border-left-width:4px;
+      transform:translateY(8px);
+      box-shadow:0 -10px 40px -14px rgba(8,11,20,.45);
+    }
+    .gloss-tip.show{transform:none}
+
+    /* --- comments rail: full-screen push-from-right --------------------- */
+    .cmt-rail{width:100%;max-width:100%}
+    .cmt-rail-head{padding:calc(20px + env(safe-area-inset-top)) 20px 14px}
+    .cmt-rail-head .rt{font-size:1.3rem}
+    .cmt-rail-head .rt button{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;margin-right:-8px}
+    .cmt-rail-filters button{min-height:38px;padding:0 16px}
+    .cmt-rail-body{padding-bottom:calc(30px + env(safe-area-inset-bottom))}
+    .cmt-rail-block{padding:16px 20px;min-height:56px}
+    .cmt-rail-sec{padding:16px 20px 4px}
+
+    /* --- ≥44px tap targets across the comment UI ------------------------ */
+    .cmt-tag{min-width:32px;height:32px;border-radius:16px;top:8px;right:8px}
+    .cmt-tag::before{content:"";position:absolute;inset:-8px}   /* hit slop, no layout shift */
+    .cmt-tag .cmt-count{font-size:.78rem}
+    .cmt-x{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+    .cmt-acts{gap:8px;margin-top:10px}
+    .cmt-acts button{min-height:38px;padding:0 14px;border:1px solid var(--line);border-radius:19px}
+    .cmt-acts button:hover{text-decoration:none}
+    .cmt-toggle{min-height:40px;padding:8px 14px;font-size:.8rem}
+    .ver-switch select{font-size:16px;padding:8px 10px;min-height:40px}
+
+    /* --- inline glossary terms: give them a real hit rect + a touch cue.
+           `cursor:help` means nothing on a touchscreen. ------------------ */
+    .gloss{
+      padding:.28em .2em;margin:-.28em -.2em;border-radius:4px;
+      background:rgba(255,77,58,.08);border-bottom-color:transparent;
+    }
+
+    /* --- lifecycle: horizontal snap rail, not a 4-row grid -------------- */
+    .flow-track{
+      display:flex;grid-template-columns:none;flex-wrap:nowrap;
+      overflow-x:auto;gap:4px;
+      scroll-snap-type:x proximity;scroll-padding-inline:20px;
+      padding:8px 20px 6px;margin:0 -20px;
+      -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+      scrollbar-width:none;
+    }
+    .flow-track::-webkit-scrollbar{display:none}
+    /* connector line can't span a scrollport — kill it (the ≤760px rule
+       doesn't cover 761–768px, so re-declare here) */
+    .flow-track::before{display:none}
+    .step{flex:0 0 auto;scroll-snap-align:center;width:92px;padding:6px 4px}
+    .step .dot{width:48px;height:48px;font-size:1.05rem;margin-bottom:10px}
+    .step .step-l{font-size:.8rem}
+    /* the badge would land on the dot at this width */
+    .flow-track .step .cmt-tag{top:0;right:8px}
+    .flow-detail{touch-action:pan-y}
+    .flow-detail p{font-size:.98rem}
+    .loop-note{margin-top:26px;font-size:.9rem}
+
+    /* --- carousels: services + ecosystem only ---------------------------
+       Read-heavy sets (Trust & safety, Exec roles) stay stacked so nothing
+       substantive hides behind a gesture. ----------------------------- */
+    .svc-grid,.partner-grid{
+      display:flex;grid-template-columns:none;flex-wrap:nowrap;
+      overflow-x:auto;gap:12px;
+      scroll-snap-type:x mandatory;scroll-padding-inline:20px;
+      padding:2px 20px;margin:0 -20px;
+      -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+      scrollbar-width:none;
+    }
+    .svc-grid::-webkit-scrollbar,.partner-grid::-webkit-scrollbar{display:none}
+    .svc,.partner{flex:0 0 78%;scroll-snap-align:center}   /* 78% so the next card peeks */
+    .svc{padding:18px 20px}
+    .partner{padding:18px 20px}
+
+    /* --- placing mode: bottom banner, chunky targets -------------------- */
+    .cmt-place-banner{
+      top:auto;left:12px;right:12px;transform:none;
+      bottom:calc(74px + env(safe-area-inset-bottom));
+      border-radius:16px;padding:12px 14px;gap:10px;
+      flex-wrap:wrap;justify-content:space-between;
+    }
+    .cmt-place-banner .bmsg{flex:1 1 100%;font-size:.86rem;line-height:1.4}
+    .cmt-place-banner button{min-height:38px;padding:0 16px;font-size:.82rem;border-radius:19px}
+    .cmt-place-banner .b-go{background:var(--red);color:#fff}
+    body.cmt-placing .cmt-eligible{outline:2px solid rgba(255,77,58,.45);background:rgba(255,77,58,.05)}
+    body.cmt-placing .cmt-eligible.cmt-hot{
+      outline:3px solid var(--red);background:rgba(255,77,58,.14);
+      box-shadow:0 0 0 6px rgba(255,77,58,.10);
+    }
+
+    /* native apps don't fade content in as you scroll */
+    .reveal{opacity:1;transform:none;transition:none}
+  }
+
+  /* --- landscape phone: chrome would eat ~25% of a 390px-tall viewport --- */
+  @media(max-height:520px) and (orientation:landscape){
+    .nav-row-links{display:none}        /* brand row only; ResizeObserver re-syncs --chrome-h */
+    section{padding:36px 0}
+    .cmt-pop{max-height:94dvh}
+    .cmt-list{padding:4px 18px}
+  }
+
+  /* --- touch devices: press feedback, and kill latching hover ------------
+     On touch, :hover sticks after a tap — a lifted card that never settles
+     is the loudest "this is a desktop site" tell on the page. ---------- */
+  @media(hover:none){
+    .persona:hover,.sys:hover,.svc:hover,.partner:hover,.role-card:hover,
+    a.doc-card:hover,.cmt-fab:hover,.cmt-tag:hover{transform:none;box-shadow:none}
+    .persona:hover::before{transform:scaleX(0)}
+    .step:hover .dot{transform:none;background:var(--card);color:var(--navy)}
+    .step.active:hover .dot{background:var(--navy);color:#fff}
+    .step:hover .step-l{color:var(--ink-soft)}
+    .step.active:hover .step-l{color:var(--navy)}
+    a.doc-card:hover .doc-arrow{transform:none}
+    .cmt-rail-block:hover{background:none}
+    .cmt-acts button:hover{text-decoration:none;color:var(--red-ink)}
+
+    .cmt-fab:active,.cmt-toggle:active,.cmt-submit:active,.cmt-tag:active,
+    .cmt-rail-filters button:active,.cmt-place-banner button:active,
+    .cmt-acts button:active,.cmt-x:active{transform:scale(.96);opacity:.9}
+    .nav-links a:active{background:var(--paper-2)}
+    .nav-links a.active:active{background:var(--navy-deep)}
+    .step:active .dot{transform:scale(.92)}
+    .cmt-rail-block:active,a.doc-card:active,.svc:active,.partner:active,
+    .persona:active,.sys:active,.comp:active,.role-card:active{background:var(--paper-2)}
+    .gloss:active{background:rgba(255,77,58,.2)}
+  }
+
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+    .reveal{opacity:1;transform:none}
+  }
 </style>
 </head>
 <body>
@@ -1201,9 +1494,10 @@
 </footer>
 
 <script>
-  // nav scrolled state
   const nav=document.getElementById('nav');
-  addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>20));
+  const mq=matchMedia('(max-width:768px)');
+  // read at call time — never cache, or a rotation across the breakpoint desyncs everything
+  const isMobile=()=>mq.matches;
 
   // reveal on scroll
   const io=new IntersectionObserver((es)=>{
@@ -1211,15 +1505,96 @@
   },{threshold:.12,rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 
-  // active nav link
+  /* ---- --chrome-h: the measured height of the PINNED page chrome --------
+     Drives scroll-padding-top (so anchor jumps clear the nav) and the
+     placing banner. The old hard-coded 108px was wrong on desktop and badly
+     wrong on mobile, where the nav wrapped to ~3 lines.
+     Two observers: #nav's box doesn't change when the brand row is hidden by
+     a transform, so the chip row is measured separately.                  */
+  const navLinksRow=document.querySelector('.nav-row-links');
+  function syncChrome(){
+    // While the brand row is collapsed the chrome is temporarily shorter, but an
+    // anchor jump un-collapses it first — so we always publish the EXPANDED
+    // height and simply skip the update while collapsed. Otherwise a chip tap
+    // races the re-expansion and lands ~44px off.
+    if(nav.classList.contains('nav-up')) return;
+    let h;
+    if(isMobile()){
+      const r=navLinksRow?navLinksRow.getBoundingClientRect():null;
+      // chip row is pinned; when it's hidden (landscape) fall back to the nav box
+      h=(r&&r.height) ? r.bottom : nav.getBoundingClientRect().bottom;
+    } else {
+      h=nav.offsetHeight;
+    }
+    document.documentElement.style.setProperty('--chrome-h',Math.round(Math.max(h,0))+'px');
+  }
+  if(window.ResizeObserver){
+    const ro=new ResizeObserver(()=>syncChrome());
+    ro.observe(nav);
+    if(navLinksRow) ro.observe(navLinksRow);
+  }
+  addEventListener('resize',syncChrome);
+  addEventListener('load',syncChrome);
+  syncChrome();
+
+  /* ---- nav state: scrolled shadow + hide-the-brand-row on scroll down ---
+     Only the brand row hides; the chip strip stays pinned so --chrome-h
+     stays measurable and anchor jumps keep landing in the right place.    */
+  let lastY=scrollY, navTick=false;
+  function onScroll(){
+    const y=scrollY;
+    nav.classList.toggle('scrolled',y>20);
+    if(isMobile()){
+      const dy=y-lastY;
+      if(y>140 && dy>6) nav.classList.add('nav-up');
+      else if(dy<-6 || y<=140) nav.classList.remove('nav-up');
+    } else {
+      nav.classList.remove('nav-up');
+    }
+    if(Math.abs(y-lastY)>2) lastY=y;
+    updateSpy();
+    navTick=false;
+  }
+  addEventListener('scroll',()=>{
+    if(!navTick){ navTick=true; requestAnimationFrame(onScroll); }
+  },{passive:true});
+
+  /* ---- active section (scroll-spy) --------------------------------------
+     Replaces an IntersectionObserver whose rootMargin (-40%/-55% → a 5%-tall
+     band) combined with threshold .4 was unreachable for sections this tall,
+     so it degraded to "last section to touch the band wins" and never
+     cleared. Tolerable behind a 2px underline; visibly wrong once it drives
+     a filled, auto-centring chip. A direct position scan is simpler.      */
   const links=[...document.querySelectorAll('.nav-links a[href^="#"]')];
   const secs=links.map(l=>document.querySelector(l.getAttribute('href'))).filter(Boolean);
-  const spy=new IntersectionObserver((es)=>{
-    es.forEach(e=>{if(e.isIntersecting){
-      links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+e.target.id));
-    }});
-  },{threshold:.4,rootMargin:'-40% 0px -55% 0px'});
-  secs.forEach(s=>spy.observe(s));
+  const navLinks=document.querySelector('.nav-links');
+  let activeLink=null;
+  function updateSpy(){
+    if(!secs.length) return;
+    const chrome=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-h'))||0;
+    const line=chrome + innerHeight*0.2;      // the "you are here" line
+    let current=secs[0];
+    for(const s of secs){ if(s.getBoundingClientRect().top<=line) current=s; else break; }
+    // at the very bottom the last section may never cross the line
+    if(innerHeight+scrollY>=document.body.scrollHeight-4) current=secs[secs.length-1];
+    const want='#'+current.id;
+    const link=links.find(l=>l.getAttribute('href')===want);
+    if(link===activeLink) return;
+    links.forEach(l=>l.classList.toggle('active',l===link));
+    activeLink=link;
+    if(link && isMobile() && navLinks) centreIn(navLinks,link);
+  }
+
+  /* Scroll a horizontal rail so `el` is centred, WITHOUT scrolling the page.
+     scrollIntoView() would scroll every scrollable ancestor including the
+     document, which yanks the page vertically. Shared by the nav chip strip
+     and the lifecycle stage rail. */
+  function centreIn(container,el){
+    if(!container||!el) return;
+    const c=container.getBoundingClientRect(), r=el.getBoundingClientRect();
+    const target=container.scrollLeft+(r.left-c.left)-(c.width-r.width)/2;
+    container.scrollTo({left:Math.max(0,target),behavior:'smooth'});
+  }
 
   // ----- glossary: single source of definitions -----
   // To add a term: add one entry below. The glossary section renders from this list,
@@ -1324,6 +1699,13 @@
   function showTip(el){
     const def=el.getAttribute('data-tip'); if(!def) return;
     tip.textContent=def;
+    if(isMobile()){
+      // bottom-anchored card: clear any inline coords a desktop pass left behind,
+      // so the stylesheet's left/right/bottom take effect without !important
+      tip.style.left=''; tip.style.top='';
+      tip.classList.add('show'); tipFor=el;
+      return;
+    }
     const t=tip.getBoundingClientRect(), r=el.getBoundingClientRect();
     const pad=10, vw=document.documentElement.clientWidth;
     const left=Math.max(pad, Math.min(r.left, vw - t.width - pad));
@@ -1368,10 +1750,14 @@
     {title:"Follow up", body:"The driver rates the provider and the experience. Ratings feed provider standing and future matching, and low ratings or incidents route to operations for review. Job data — response time, acceptance rate, service type, location, outcome — accumulates into the operating picture used to plan coverage, pricing and recruitment.", openQ:"Define the dispute window and the resolution process: how long after a job can a driver raise an issue, who decides, and what remedies exist (refund, re-service, provider suspension). Also confirm what post-job contact is appropriate without becoming spam.", systems:["Driver App","Operations Console","Dispatch Core"]}
   ];
 
-  let lcDetail, lcSteps=[];
+  let lcDetail, lcSteps=[], lcIndex=0;
   function showStage(i){
     const s=LIFECYCLE[i]; if(!s||!lcDetail) return;
+    lcIndex=i;
     lcSteps.forEach((b,j)=>{const on=j===i; b.classList.toggle('active',on); b.setAttribute('aria-selected',on);});
+    // keep the active chip visible in the horizontal rail (mobile)
+    const track=document.querySelector('.flow-track');
+    if(track && isMobile() && lcSteps[i]) centreIn(track,lcSteps[i]);
     lcDetail.innerHTML='';
     const h=document.createElement('h3'); h.textContent=s.title;
     const p=document.createElement('p'); p.textContent=s.body;
@@ -1399,7 +1785,37 @@
   function wireLifecycle(){
     lcDetail=document.getElementById('flow-detail');
     lcSteps=[...document.querySelectorAll('.flow-track .step')];
-    lcSteps.forEach((b,i)=>b.addEventListener('click',()=>showStage(i)));
+    lcSteps.forEach((b,i)=>{
+      if(b.dataset.lcWired) return;          // guard: every current call path replaces
+      b.dataset.lcWired='1';                 // these nodes, but don't leave a landmine
+      b.addEventListener('click',()=>showStage(i));
+      b.addEventListener('keydown',e=>{      // arrow-key parity with the swipe gesture
+        if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft') return;
+        e.preventDefault();
+        const n=(i+(e.key==='ArrowRight'?1:-1)+LIFECYCLE.length)%LIFECYCLE.length;
+        showStage(n); lcSteps[n]?.focus();
+      });
+    });
+    const track=document.querySelector('.flow-track');
+    if(track && !track.dataset.lcWired){ track.dataset.lcWired='1'; track.setAttribute('aria-orientation','horizontal'); }
+    // swipe the detail panel between stages (mobile). touch-action:pan-y already
+    // reserves the horizontal axis, so we never preventDefault on touchmove.
+    if(lcDetail && !lcDetail.dataset.lcSwipe){
+      lcDetail.dataset.lcSwipe='1';
+      let sx=0, sy=0, tracking=false;
+      lcDetail.addEventListener('touchstart',e=>{
+        if(!isMobile()||placing||e.touches.length!==1){ tracking=false; return; }
+        tracking=true; sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+      },{passive:true});
+      lcDetail.addEventListener('touchend',e=>{
+        if(!tracking) return; tracking=false;
+        const t=e.changedTouches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+        if(Math.abs(dx)<45 || Math.abs(dx)<Math.abs(dy)*1.6) return;
+        const n=lcIndex+(dx<0?1:-1);
+        if(n<0||n>=LIFECYCLE.length) return;
+        showStage(n); haptic();
+      },{passive:true});
+    }
     if(lcSteps.length) showStage(0);
   }
 
@@ -1592,10 +2008,14 @@
       +'<button type="submit" class="cmt-submit">Add comment</button></form>';
     placePopover(el);
     pop.classList.add('show');
+    sheetOpened('pop');
     pop.querySelector('.cmt-x').onclick=closePopover;
     pop.querySelector('form').onsubmit=onSubmit;
     pop.querySelectorAll('[data-act]').forEach(b=>b.onclick=onItemAct);
-    const ta=pop.querySelector('textarea'); if(rememberedName()) ta.focus(); else pop.querySelector('input').focus();
+    // no autofocus on mobile — the keyboard would cover the thread before it's read
+    if(!isMobile()){
+      const ta=pop.querySelector('textarea'); if(rememberedName()) ta.focus(); else pop.querySelector('input').focus();
+    }
   }
   function renderItem(c){
     return '<div class="cmt-item'+(c.status==='resolved'?' resolved':'')+'">'
@@ -1624,6 +2044,11 @@
     await refresh(); openPopover(popFor);
   }
   function placePopover(el){
+    if(isMobile()){
+      // bottom sheet: clear the desktop flyout coords so the stylesheet governs
+      pop.style.left=''; pop.style.top='';
+      return;
+    }
     const r=el.getBoundingClientRect(), pad=12, vw=innerWidth, vh=innerHeight;
     pop.style.visibility='hidden'; pop.classList.add('show');
     const pr=pop.getBoundingClientRect(); pop.classList.remove('show'); pop.style.visibility='';
@@ -1631,7 +2056,11 @@
     let top=Math.min(Math.max(pad,r.top), vh-pr.height-pad);
     pop.style.left=left+'px'; pop.style.top=top+'px';
   }
-  function closePopover(){ pop.classList.remove('show'); popFor=null; }
+  function closePopover(){
+    pop.classList.remove('show'); pop.classList.remove('dragging');
+    pop.style.transform=''; popFor=null;
+    sheetClosed('pop');
+  }
   document.addEventListener('click',e=>{ if(popFor && !pop.contains(e.target) && !e.target.closest('.cmt-tag')) closePopover(); });
   addEventListener('keydown',e=>{ if(e.key==='Escape'){ closePopover(); closeRail(); } });
   addEventListener('resize',()=>{ if(popFor) placePopover(popFor); });
@@ -1679,13 +2108,20 @@
     rail.querySelectorAll('.cmt-rail-block').forEach(b=>b.onclick=()=>{
       const aid=b.getAttribute('data-go');
       const el=locateAnchor(aid);   // reveals the right lifecycle step if needed
-      if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>openPopover(el),420); }
+      if(el){
+        // on mobile the rail is full-screen — close it first, or the page
+        // scrolls invisibly behind it and the sheet opens over a blank panel
+        const m=isMobile();
+        if(m) closeRail();
+        el.scrollIntoView({behavior:'smooth',block:m?'start':'center'});
+        setTimeout(()=>openPopover(el),m?460:420);
+      }
       else { setVerNote('That comment’s location isn’t present in this version.'); }
     });
   }
   const toggle=document.getElementById('cmt-toggle');
-  function openRail(){ renderRail(); rail.classList.add('open'); backdrop.classList.add('show'); rail.setAttribute('aria-hidden','false'); toggle.classList.add('on'); toggle.setAttribute('aria-pressed','true'); }
-  function closeRail(){ rail.classList.remove('open'); backdrop.classList.remove('show'); rail.setAttribute('aria-hidden','true'); toggle.classList.remove('on'); toggle.setAttribute('aria-pressed','false'); }
+  function openRail(){ renderRail(); rail.classList.add('open'); backdrop.classList.add('show'); rail.setAttribute('aria-hidden','false'); toggle.classList.add('on'); toggle.setAttribute('aria-pressed','true'); document.body.classList.add('rail-open'); sheetOpened('rail'); }
+  function closeRail(){ rail.classList.remove('open'); backdrop.classList.remove('show'); rail.setAttribute('aria-hidden','true'); toggle.classList.remove('on'); toggle.setAttribute('aria-pressed','false'); document.body.classList.remove('rail-open'); sheetClosed('rail'); }
   toggle.onclick=()=>rail.classList.contains('open')?closeRail():openRail();
   backdrop.onclick=closeRail;
 
@@ -1724,27 +2160,31 @@
   async function applyVersionContent(){
     const v=VERSIONS.find(x=>x.id===activeVersion);
     if(!docHost || !v) return;
-    if(v.current){ docHost.innerHTML=currentLiveHTML; initContent(); setVerNote(''); return; }
+    if(v.current){ docHost.innerHTML=currentLiveHTML; initContent(true); setVerNote(''); return; }
     if(v.file){
       try{
         const res=await fetch(v.file,{cache:'no-cache'});
         if(!res.ok) throw new Error(res.status);
         docHost.innerHTML=await res.text();
-        initContent();
+        initContent(true);
         setVerNote('Viewing '+v.id+' (archived) — interactive content (lifecycle detail, glossary, documents) shows the latest. Switch to the current version to comment.');
       }catch(e){
-        docHost.innerHTML=currentLiveHTML; initContent();
+        docHost.innerHTML=currentLiveHTML; initContent(true);
         setVerNote('Could not load '+v.id+' content — showing current.');
       }
     }
   }
 
-  /* Re-run all content-bound wiring after the #doc-content DOM changes. */
-  function initContent(){
+  /* Re-run all content-bound wiring after the #doc-content DOM changes.
+     `swapped` is true only when the markup was just replaced by the version
+     switcher — those nodes were never registered with the reveal observer, so
+     they're force-shown. On first boot we must NOT do that, or every .reveal is
+     already `in` before first paint and the scroll animation never plays. */
+  function initContent(swapped){
     assignAnchors();
     wireTooltips();
     wireLifecycle();
-    document.querySelectorAll('#doc-content .reveal').forEach(el=>el.classList.add('in'));
+    if(swapped) document.querySelectorAll('#doc-content .reveal').forEach(el=>el.classList.add('in'));
   }
 
   /* ====================================================================
@@ -1756,7 +2196,7 @@
   // We deliberately exclude tiny inline nodes so anchors stay meaningful
   // and robust to reflow (see CLAUDE.md anchoring principle).
   const WIDEN_SEL = 'h1,h2,h3,h4,p,li,.chip,.sys-chip,.path-chip,.reg,[data-comment-id]';
-  const SKIP_CLOSEST = '.cmt-fab,.cmt-pop,.cmt-rail,.cmt-place-banner,nav';
+  const SKIP_CLOSEST = '.cmt-fab,.cmt-pop,.cmt-rail,.cmt-place-banner,.mob-bar,.gloss-tip,nav';
   function isEligible(el){
     if(!el || el.nodeType!==1) return false;
     if(el.closest(SKIP_CLOSEST)) return false;
@@ -1867,9 +2307,26 @@
   document.body.appendChild(fab);
 
   const banner=document.createElement('div'); banner.className='cmt-place-banner';
-  banner.innerHTML='<span class="bmsg">Click a highlighted block to comment on it</span><button type="button">Cancel</button>';
+  banner.innerHTML='<span class="bmsg">Click a highlighted block to comment on it</span>'
+    +'<button type="button" class="b-go" hidden>Comment</button>'
+    +'<button type="button" class="b-x">Cancel</button>';
   document.body.appendChild(banner);
-  banner.querySelector('button').onclick=()=>endPlacing();
+  const bannerMsg=banner.querySelector('.bmsg');
+  const bannerGo=banner.querySelector('.b-go');
+  banner.querySelector('.b-x').onclick=()=>endPlacing();
+  bannerGo.onclick=()=>{ if(lastHot) commitTarget(lastHot); };
+
+  const PLACE_HINT='Tap a highlighted block to comment on it';
+  /* Touch has no hover, so there's no "what will I pick" preview. Instead the
+     first tap selects and names the block; a second tap (or the Comment button)
+     commits. Better than a preview: it says what you're about to comment on. */
+  function showPlaceTarget(el){
+    if(!el){ bannerMsg.textContent=PLACE_HINT; bannerGo.hidden=true; return; }
+    const label=el.getAttribute('data-comment-label')
+      || el.textContent.trim().replace(/\s+/g,' ').slice(0,52);
+    bannerMsg.innerHTML='Comment on: <b>'+esc(label)+'</b>';
+    bannerGo.hidden=false;
+  }
 
   let placing=false, lastHot=null;
 
@@ -1888,6 +2345,7 @@
     placing=true;
     document.body.classList.add('cmt-placing');
     markEligible(true);
+    showPlaceTarget(null);
     banner.classList.add('show');
     fab.classList.add('on');
   }
@@ -1895,6 +2353,7 @@
     placing=false;
     document.body.classList.remove('cmt-placing');
     markEligible(false); setHot(null);
+    showPlaceTarget(null);
     banner.classList.remove('show');
     fab.classList.remove('on');
   }
@@ -1902,8 +2361,12 @@
     if(!el) return;
     ensureAnchor(el);
     endPlacing();
-    el.scrollIntoView({behavior:'smooth',block:'center'});
-    setTimeout(()=>openPopover(el),360);
+    haptic();
+    // 'start' on mobile so the block lands under the chip strip and above the
+    // sheet; 'center' would put it behind the sheet.
+    const m=isMobile();
+    el.scrollIntoView({behavior:'smooth',block:m?'start':'center'});
+    setTimeout(()=>openPopover(el),m?430:360);
   }
 
   // Add comment → enter placing mode (toggle); click a highlighted block to commit.
@@ -1916,13 +2379,170 @@
   // click a block to commit; click elsewhere (or Cancel/Esc) exits
   document.addEventListener('click',e=>{
     if(!placing) return;
-    if(e.target.closest('.cmt-fab,.cmt-place-banner')) return;
+    if(e.target.closest('.cmt-fab,.cmt-place-banner,.mob-bar')) return;
     e.preventDefault(); e.stopPropagation();
     const el=eligibleFrom(e.target);
-    if(el) commitTarget(el); else endPlacing();   // click off a block = cancel
+    if(!el){ endPlacing(); return; }              // click off a block = cancel
+    // mobile: first tap selects and names it, second tap (or the button) commits
+    if(isMobile() && el!==lastHot){ setHot(el); showPlaceTarget(el); return; }
+    commitTarget(el);
   },true);
   // keyboard: Esc cancels (the chip is a normal button, Enter/Space click it)
   addEventListener('keydown',e=>{ if(e.key==='Escape' && placing) endPlacing(); });
+
+  /* ====================================================================
+     MOBILE LAYER
+     --------------------------------------------------------------------
+     Everything below is presentation only — it never mutates the DOM
+     inside #doc-content, because comment anchor ids (computeElId) hash an
+     element's ancestor chain. Adding a wrapper there would orphan stored
+     comments. Classes and data-* attributes are safe; structure is not.
+
+     The layout work is all CSS (see the @media block in <style>). This is
+     just the behaviour CSS can't express: the bottom bar host, sheet
+     presentation, drag-to-dismiss, scroll lock, keyboard offset, and the
+     back-button integration.
+     ==================================================================== */
+
+  const HAPTICS=true;
+  function haptic(ms){ if(HAPTICS && isMobile() && navigator.vibrate) { try{ navigator.vibrate(ms||8); }catch(e){} } }
+
+  /* ---- bottom action bar --------------------------------------------
+     The .cmt-fab is MOVED into this host rather than duplicated, so it
+     keeps its class, its listener and its identity. On desktop the host is
+     `display:contents`, which leaves the fab's fixed positioning resolving
+     against the viewport exactly as before — desktop is unchanged.     */
+  const mobBar=document.createElement('div');
+  mobBar.className='mob-bar';
+  document.body.appendChild(mobBar);
+  mobBar.appendChild(fab);
+
+  /* ---- popover backdrop ----------------------------------------------
+     Deliberately NOT the rail's `backdrop` — that element's onclick is
+     bound to closeRail(). */
+  const popBackdrop=document.createElement('div');
+  popBackdrop.className='cmt-pop-backdrop';
+  document.body.appendChild(popBackdrop);
+  popBackdrop.onclick=closePopover;
+
+  /* ---- scroll lock + focus containment -------------------------------
+     `inert` on the document host gives focus containment for free. We
+     avoid the position:fixed body-lock trick — it fights scroll-behavior
+     :smooth and the commitTarget scroll-then-open sequence. */
+  let lockCount=0;
+  function lockScroll(){
+    if(!isMobile()) return;
+    if(++lockCount===1){
+      document.documentElement.style.overflow='hidden';
+      if(docHost) docHost.inert=true;
+    }
+  }
+  function releaseScrollLock(force){
+    if(force) lockCount=0; else if(lockCount>0) lockCount--;
+    if(lockCount===0){
+      document.documentElement.style.overflow='';
+      if(docHost) docHost.inert=false;
+    }
+  }
+
+  /* ---- back button closes the sheet, not the page --------------------
+     pushState with NO url argument, so the version switcher's
+     `location.search=''` is untouched. A counter keeps programmatic closes
+     from double-popping. */
+  let histDepth=0, openSheets=new Set();
+  function sheetOpened(name){
+    if(openSheets.has(name)) return;
+    openSheets.add(name);
+    if(!isMobile()) return;
+    lockScroll();
+    if(name==='pop') popBackdrop.classList.add('show');
+    try{ history.pushState({focSheet:1},''); histDepth++; }catch(e){}
+  }
+  function sheetClosed(name){
+    if(!openSheets.has(name)) return;
+    openSheets.delete(name);
+    popBackdrop.classList.remove('show');
+    releaseScrollLock();
+    if(histDepth>0){ histDepth--; try{ history.back(); }catch(e){} }
+  }
+  addEventListener('popstate',()=>{
+    if(!openSheets.size) return;
+    histDepth=Math.max(0,histDepth-1);
+    // close the topmost surface; sheetClosed() would try to pop again, so
+    // clear our history bookkeeping first
+    const wasDepth=histDepth; histDepth=0;
+    if(openSheets.has('pop')) closePopover();
+    else if(openSheets.has('rail')) closeRail();
+    histDepth=wasDepth;
+  });
+
+  /* ---- on-screen keyboard offset -------------------------------------
+     iOS does not move position:fixed elements for the keyboard. Android
+     with the default interactive-widget resizes the layout viewport, so
+     this yields ~0 there — one code path covers both. */
+  const vv=window.visualViewport;
+  if(vv){
+    const syncKb=()=>{
+      const kb=Math.max(0, innerHeight-(vv.height+vv.offsetTop));
+      document.documentElement.style.setProperty('--kb',(isMobile()?kb:0)+'px');
+    };
+    vv.addEventListener('resize',syncKb);
+    vv.addEventListener('scroll',syncKb);
+  }
+
+  /* ---- drag the sheet down to dismiss --------------------------------
+     Bound to the header only, so the comment thread still scrolls. Touch
+     events don't participate in the click chain, so this can't collide
+     with the capture-phase placing handler or the outside-click guard. */
+  (function sheetDrag(){
+    let sy=0, dy=0, t0=0, dragging=false;
+    pop.addEventListener('touchstart',e=>{
+      if(!isMobile()||e.touches.length!==1) return;
+      if(!e.target.closest('.cmt-pop-head')) return;
+      dragging=true; sy=e.touches[0].clientY; dy=0; t0=Date.now();
+      pop.classList.add('dragging');
+    },{passive:true});
+    pop.addEventListener('touchmove',e=>{
+      if(!dragging) return;
+      dy=Math.max(0,e.touches[0].clientY-sy);          // down only
+      pop.style.transform='translateY('+dy+'px)';
+    },{passive:true});
+    pop.addEventListener('touchend',()=>{
+      if(!dragging) return;
+      dragging=false; pop.classList.remove('dragging');
+      const v=dy/Math.max(1,Date.now()-t0);
+      if(dy>90 || v>0.5){ pop.style.transform=''; closePopover(); }
+      else pop.style.transform='';                      // snap back
+    },{passive:true});
+  })();
+
+  /* ---- breakpoint crossing (rotation, desktop resize) ----------------
+     Nearly everything is CSS, so this only has to repair the few pieces
+     of JS-held state that differ between modes. */
+  mq.addEventListener('change',()=>{
+    hideTip();                                   // anchored vs card — just dismiss
+    syncChrome();
+    if(!isMobile()){
+      releaseScrollLock(true);
+      popBackdrop.classList.remove('show');
+      nav.classList.remove('nav-up');
+      document.documentElement.style.setProperty('--kb','0px');
+    } else if(openSheets.size){
+      lockScroll();
+      if(openSheets.has('pop')) popBackdrop.classList.add('show');
+    }
+    if(popFor && pop.classList.contains('show')){ pop.style.transform=''; placePopover(popFor); }
+    if(placing) showPlaceTarget(lastHot);
+    activeLink=null; updateSpy();               // force a re-centre of the chip
+    if(lcSteps.length && isMobile()){
+      const track=document.querySelector('.flow-track');
+      if(track && lcSteps[lcIndex]) centreIn(track,lcSteps[lcIndex]);
+    }
+  });
+
+  // un-collapse the brand row before an anchor jump, so the landing position
+  // matches the scroll-padding the browser is about to use
+  links.forEach(l=>l.addEventListener('click',()=>{ nav.classList.remove('nav-up'); }));
 
   /* ---- Refresh ------------------------------------------------------ */
   async function refresh(){
@@ -1936,6 +2556,7 @@
   /* ---- Boot --------------------------------------------------------- */
   (async function boot(){
     initContent();                                  // wire the live (current) content
+    syncChrome(); updateSpy();                      // measure chrome, set the first active chip
     const v=VERSIONS.find(x=>x.id===activeVersion);
     if(v && !v.current){ railFilter='all'; await applyVersionContent(); } // archived via ?v=
     await refresh();

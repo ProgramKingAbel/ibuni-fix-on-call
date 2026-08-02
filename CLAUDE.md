@@ -123,6 +123,80 @@ In-page commenting is **anchored, versioned, and backed by a swappable storage a
 
 ---
 
+## Mobile layer (≤768px)
+
+The page has a mobile-native layer on top of the responsive desktop layout. Desktop is
+unchanged by it. Two clearly-delimited blocks hold nearly all of it:
+
+- **CSS** — one `@media(max-width:768px)` block appended *last* in `<style>`, plus
+  `@media(hover:none)`, `@media(prefers-reduced-motion:reduce)` and a landscape-phone block.
+  Appended last on purpose: it wins on source order, so nothing above needs re-specifying.
+- **JS** — the `MOBILE LAYER` block near the end of the `<script>`.
+
+### The anchor rule — read before touching the markup
+
+Comment anchors come in two kinds. Curated ids (`ANCHOR_MAP`) derive from CSS selectors and
+are ancestor-insensitive. Smart-widened `el-*` ids (`computeElId`) hash the element's ancestor
+tag-chain + same-tag sibling indices + its first 40 characters of text, terminating at the
+nearest id'd ancestor.
+
+**Inside `#doc-content`:**
+
+| Change | Safe? |
+|---|---|
+| Add/remove a **class** | ✅ |
+| Add/remove any **attribute except `id`** | ✅ |
+| Add an **`id`** | ❌ `structuralPath` stops at the first id'd ancestor |
+| **Insert / remove / reorder** an element | ❌ changes sibling indices and depth |
+| Change **text** | ❌ the hash includes the text |
+
+A wrapper element added inside `#doc-content` silently orphans every stored comment on its
+descendants — `resolveAnchors()` fails quietly and the rail shows "location isn't present in
+this version." **The mobile layer therefore mutates no DOM inside `#doc-content` at all.** The
+regression gate for this is in "Verification" below.
+
+`<nav>` and the body-level overlays (`.gloss-tip`, `.cmt-pop`, `.cmt-rail`, `.cmt-fab`,
+`.cmt-place-banner`, `.mob-bar`) sit outside `#doc-content` and are free to restructure.
+
+### Key mechanisms
+
+- **`--chrome-h`** — the measured height of the *pinned* page chrome, kept in sync by
+  `syncChrome()` via two `ResizeObserver`s. Drives `scroll-padding-top` (so anchor jumps clear
+  the nav) and the placing banner's position. Replaced a hard-coded `108px` that was wrong on
+  desktop and badly wrong on mobile. It deliberately **skips updating while `nav.nav-up`** is
+  set, so it always reports the expanded height — an anchor jump un-collapses the brand row
+  first, and a changing value would race that.
+- **`isMobile()`** reads `mq.matches` at call time. Never cache it in a boolean — a rotation
+  across the breakpoint would desync every branch.
+- **`.mob-bar`** — the bottom action bar. The existing `.cmt-fab` is *moved* into it (same
+  element, same listeners). On desktop the host is `display:contents`, so the fab's fixed
+  positioning still resolves against the viewport and desktop is byte-identical. It's in both
+  `SKIP_CLOSEST` and the placing-mode allowlist.
+- **The comment sheet is `.cmt-pop` itself**, restyled — not a wrapper around it. The
+  outside-click guard at `closePopover`'s listener tests `!pop.contains(e.target)`; a wrapper
+  would make every tap on the sheet's own chrome close it under the user's finger.
+- **`sheetOpened()` / `sheetClosed()`** — scroll lock, `docHost.inert`, the popover backdrop and
+  the back-button `pushState` all hang off these. `pushState` is called with **no URL argument**
+  so it can't fight the version switcher's `location.search=''`.
+- **No new `document`-level click listeners.** There are exactly three and the count is gated in
+  CI-style checks; their ordering is load-bearing (a capture-phase handler swallows clicks during
+  placing mode). New dismissal logic binds to its own element instead.
+- **`centreIn(container, el)`** scrolls a horizontal rail without scrolling the page.
+  `scrollIntoView()` would scroll every scrollable ancestor including the document.
+- **Carousels** are `.svc-grid` and `.partner-grid` only — pure CSS (`grid` → `flex` +
+  `scroll-snap`). Trust & safety and the exec roles stay stacked: they're read, not browsed, and
+  each card is individually commentable.
+- **Placing mode is two-tap on mobile** — first tap selects and *names* the block in the bottom
+  banner, second tap (or the Comment button) commits. Touch has no hover preview; naming the
+  target is better than one anyway.
+
+### Things that will silently break the native feel
+
+- Form controls under `16px` make iOS Safari zoom the page on focus and never zoom back.
+- Any `:hover` transform without a `@media(hover:none)` neutraliser latches after a tap.
+- `env(safe-area-inset-*)` resolves to `0` without `viewport-fit=cover` in the viewport meta.
+- `100vh` jumps when the mobile browser toolbar shows/hides — use `dvh`.
+
 ## Open content decisions (confirm with the exec team)
 
 Every one of these is already surfaced on the page as an `open-q` callout — keep the two in sync.
@@ -192,6 +266,34 @@ PORT=3000 node serve.mjs       # custom port
 ```
 
 Live reload is on: saving `.html` / `.css` / `.js` refreshes the browser.
+
+`serve.mjs` binds `0.0.0.0`, so **a real phone on the same Wi-Fi can load
+`http://<machine-LAN-IP>:8080`** with live reload. That is the only way to test the mobile
+layer properly — DevTools device mode reproduces none of: iOS input auto-zoom, safe-area
+insets, `visualViewport` keyboard behaviour, momentum scrolling, or latching `:hover`.
+
+## Verification
+
+No headless browser is available on the author's machine (and the corporate web filter blocks
+external sites), so checks are static. The scripts live in the session scratchpad; the gates
+worth re-creating are:
+
+1. **Anchor safety** — extract `#doc-content` from a known-good copy and from the working tree
+   and assert they're byte-identical apart from `class=` values. If identical, no `el-*` id can
+   have changed. This is a proof, not a spot-check, and it is the acceptance test for any
+   change that touches markup.
+2. **CSS brace balance** in the `<style>` block — an unterminated `@media` silently kills every
+   rule after it.
+3. `node --check` on the extracted `<script>`.
+4. Grep gates: no static `vh` left; `viewport-fit=cover` present; `document.addEventListener('click'`
+   count still 3; form controls at 16px; `:active` rules present; carousels limited to the two
+   agreed grids.
+5. Structural checks: every `data-term` resolves to a `GLOSSARY` entry, nav anchors resolve,
+   stepper button count matches `LIFECYCLE`, section indices sequential, div balance, all CSS
+   vars declared.
+
+The end-to-end test that only a browser can do: **place a comment, reload, confirm the badge is
+still there** — and place one on desktop, then open on mobile, and confirm it resolves.
 
 ## Deployment (not yet done)
 
