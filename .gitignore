@@ -1,0 +1,17 @@
+.DS_Store
+Thumbs.db
+
+# secrets & build artifacts — never commit
+.shared-secret
+.page-credentials
+infra/.shared-secret
+infra/.page-credentials
+infra/lambda/function.zip
+infra/lambda/node_modules
+
+# built deploy artifact (would contain the injected secret)
+dist/
+
+# source material — contains vendor/commercial detail kept off the page
+source/
+*.mhtml
