@@ -35,9 +35,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { fetch-depth: 2 }     # depth 2 so the anchor gate can diff against HEAD~1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
 
       - name: Syntax
@@ -89,11 +89,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -178,8 +178,14 @@ jobs:
           chk "bad signature rejected"   302 "$(code -H "Cookie: __Host-focs=${TOK%?}X" "$D/")"
           chk "valid token serves doc"   200 "$(code -H "Cookie: __Host-focs=$TOK" "$D/")"
           chk "api rejects no cookie"    401 "$(code "$D/api/comments?doc_version=v0.1")"
-          # The one that catches an edge/Lambda secret desync.
-          chk "api accepts same token"   200 "$(code -H "Cookie: __Host-focs=$TOK" "$D/api/comments?doc_version=v0.1")"
+          # THE edge/Lambda secret-desync check. It cannot use /api/comments:
+          # that 401s both for a bad signature AND for a valid token whose
+          # subject is not an allowlist member (ci@smoke never will be), so a
+          # pass there would be ambiguous. /api/health reports on the signature
+          # alone.
+          chk "lambda accepts edge token" '{"ok":true,"token":"valid"}' \
+              "$(curl -s -H "Cookie: __Host-focs=$TOK" "$D/api/health")"
+          chk "non-member still refused" 401 "$(code -H "Cookie: __Host-focs=$TOK" "$D/api/comments?doc_version=v0.1")"
 
           if [ "$fail" -gt 0 ]; then
             echo "::error::$fail smoke test(s) failed — the deployed stack is not healthy"

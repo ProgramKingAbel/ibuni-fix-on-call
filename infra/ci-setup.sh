@@ -33,8 +33,17 @@ else
 fi
 
 # -------------------------------------------------------------------- role ----
-# `sub` is restricted to this repo AND to the main branch. Without the branch
-# condition, anyone able to open a PR from a fork could assume the role.
+# `sub` is restricted to this repo AND to the deploy job's environment. Without a
+# condition beyond the repo, anyone able to open a PR from a fork could assume it.
+#
+# GOTCHA: the subject depends on how the job is scoped. A job with
+# `environment: production` gets
+#     repo:<owner>/<repo>:environment:production
+# NOT
+#     repo:<owner>/<repo>:ref:refs/heads/main
+# Getting this wrong fails with "Not authorized to perform
+# sts:AssumeRoleWithWebIdentity", which reads like a missing permission rather
+# than a mismatched condition. Keep this in step with .github/workflows/deploy.yml.
 cat > "$TMPD/ci-trust.json" <<JSON
 {
   "Version": "2012-10-17",
@@ -45,7 +54,7 @@ cat > "$TMPD/ci-trust.json" <<JSON
     "Condition": {
       "StringEquals": {
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-        "token.actions.githubusercontent.com:sub": "repo:${REPO}:ref:refs/heads/main"
+        "token.actions.githubusercontent.com:sub": "repo:${REPO}:environment:production"
       }
     }
   }]
