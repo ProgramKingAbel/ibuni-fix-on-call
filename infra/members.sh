@@ -3,11 +3,18 @@
 # second copy to drift out of sync.
 #
 #   ./infra/members.sh list
-#   ./infra/members.sh add    <email> "<name>" "<role>" [days]
-#   ./infra/members.sh remove <email>
-#   ./infra/members.sh code   <email>          # mint + print a code, no email sent
-#   ./infra/members.sh invite <email>          # single-use break-glass link
-#   ./infra/members.sh log    [hours]          # who signed in recently
+#   ./infra/members.sh add     <email> "<name>" "<role>" [days]
+#   ./infra/members.sh edit    <email> "<name>" "<role>"   # change name/role in place
+#   ./infra/members.sh disable <email>         # revoke access, KEEP the record
+#   ./infra/members.sh enable  <email>         # restore access
+#   ./infra/members.sh expire  <email> <days>  # time-box access (or 0 to clear)
+#   ./infra/members.sh remove  <email>         # delete outright
+#   ./infra/members.sh code    <email>         # mint + print a code, no email sent
+#   ./infra/members.sh invite  <email>         # single-use break-glass link
+#   ./infra/members.sh log     [hours]         # who signed in recently
+#
+# Prefer `disable` over `remove` — it revokes access identically but keeps the
+# record, so the allowlist still shows who used to have access and when.
 #
 # `code` and `invite` are the escape hatches for when SES is quarantined or a
 # recipient's mail gateway is hostile — read the code down the phone, or send the
@@ -50,6 +57,60 @@ add)
   }" >/dev/null
   echo "added $email ($name)${days:+ — expires in $days days}"
   echo "note: they must also be a verified SES recipient while the account is in the sandbox."
+  ;;
+
+edit)
+  # Update name/role in place — an UpdateItem, so added_at and expires_at survive
+  # (re-running `add` would overwrite the whole record and reset them).
+  email="$(echo "${2:?email required}" | tr '[:upper:]' '[:lower:]')"
+  name="${3:?name required}"
+  role="${4:-}"
+  aws dynamodb update-item --table-name "$TABLE" \
+    --key "{\"anchor_id\":{\"S\":\"__members\"},\"sort_key\":{\"S\":\"$email\"}}" \
+    --update-expression 'SET #n = :n, #r = :r' \
+    --condition-expression 'attribute_exists(sort_key)' \
+    --expression-attribute-names '{"#n":"name","#r":"role"}' \
+    --expression-attribute-values "{\":n\":{\"S\":\"$name\"},\":r\":{\"S\":\"$role\"}}" >/dev/null \
+    && echo "updated $email → $name${role:+, $role}" \
+    || echo "ERROR: $email is not on the allowlist (use 'add')" >&2
+  ;;
+
+disable|enable)
+  email="$(echo "${2:?email required}" | tr '[:upper:]' '[:lower:]')"
+  val=$([ "$cmd" = "enable" ] && echo true || echo false)
+  aws dynamodb update-item --table-name "$TABLE" \
+    --key "{\"anchor_id\":{\"S\":\"__members\"},\"sort_key\":{\"S\":\"$email\"}}" \
+    --update-expression 'SET active = :a' \
+    --condition-expression 'attribute_exists(sort_key)' \
+    --expression-attribute-values "{\":a\":{\"BOOL\":$val}}" >/dev/null \
+    && echo "$cmd""d $email" \
+    || { echo "ERROR: $email is not on the allowlist" >&2; exit 1; }
+  if [ "$cmd" = "disable" ]; then
+    echo
+    echo "Comment access and sign-in stop immediately. An already-issued session"
+    echo "cookie still reads the document until it expires (up to 7 days)."
+    echo "To cut that off now: ./infra/rotate-secret.sh --force"
+  fi
+  ;;
+
+expire)
+  email="$(echo "${2:?email required}" | tr '[:upper:]' '[:lower:]')"
+  days="${3:?days required (0 to clear)}"
+  if [ "$days" = "0" ]; then
+    aws dynamodb update-item --table-name "$TABLE" \
+      --key "{\"anchor_id\":{\"S\":\"__members\"},\"sort_key\":{\"S\":\"$email\"}}" \
+      --update-expression 'REMOVE expires_at' \
+      --condition-expression 'attribute_exists(sort_key)' >/dev/null \
+      && echo "$email now has no expiry"
+  else
+    until_ts=$(( $(date +%s) + days*86400 ))
+    aws dynamodb update-item --table-name "$TABLE" \
+      --key "{\"anchor_id\":{\"S\":\"__members\"},\"sort_key\":{\"S\":\"$email\"}}" \
+      --update-expression 'SET expires_at = :e' \
+      --condition-expression 'attribute_exists(sort_key)' \
+      --expression-attribute-values "{\":e\":{\"N\":\"$until_ts\"}}" >/dev/null \
+      && echo "$email expires in $days days ($(date -d "@$until_ts" 2>/dev/null || echo "$until_ts"))"
+  fi
   ;;
 
 remove)
@@ -113,7 +174,7 @@ log)
   ;;
 
 *)
-  sed -n '2,20p' "$0"
+  sed -n '2,26p' "$0"
   exit 1
   ;;
 esac

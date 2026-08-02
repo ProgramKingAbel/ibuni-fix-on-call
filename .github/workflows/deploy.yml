@@ -118,6 +118,10 @@ jobs:
       - name: Build
         env:
           CUR: ${{ secrets.SESSION_SECRET }}
+          # SESSION_PREV is only non-empty DURING a secret rotation, so it
+          # normally does not exist as a repository secret at all. GitHub
+          # substitutes an empty string for an unset secret, which is exactly
+          # what build.mjs expects — do not create an empty secret to satisfy it.
           PRV: ${{ secrets.SESSION_PREV }}
         run: |
           [ -n "$CUR" ] || { echo "SESSION_SECRET is not set in repository secrets"; exit 1; }
