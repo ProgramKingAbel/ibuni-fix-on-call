@@ -522,6 +522,13 @@
     position:fixed;left:10px;bottom:8px;z-index:5;pointer-events:none;user-select:none;
     font-size:.62rem;letter-spacing:.04em;color:var(--ink-soft);opacity:.45;
   }
+  /* local-preview banner — only ever rendered on the ungated local build */
+  .foc-dev{
+    position:fixed;left:0;right:0;top:0;z-index:2000;pointer-events:none;
+    background:repeating-linear-gradient(135deg,#B8860B,#B8860B 12px,#946C09 12px,#946C09 24px);
+    color:#fff;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    text-align:center;padding:5px 10px;text-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
   @media(max-width:768px){ .foc-wm{display:none} }   /* the action bar owns that corner */
   @media print{
     .foc-wm{position:fixed;bottom:6mm;left:6mm;opacity:.6;font-size:8pt;color:#444}
@@ -1985,8 +1992,21 @@
      ==================================================================== */
   let SESSION = null;
 
+  /* Local dev is deliberately ungated: serve.mjs is a plain static file server
+     and the login gate lives in the CloudFront Function, which only sits in
+     front of S3. That is correct, but a local copy looks identical to the
+     protected one — so say so, loudly, rather than let anyone mistake this for
+     the real thing (or hand the file around thinking it is gated). */
+  function markUngated(){
+    if(CONFIG.backend==='lambda') return;          // the deployed build is gated
+    const b=document.createElement('div');
+    b.className='foc-dev';
+    b.textContent='LOCAL PREVIEW — no login gate. The deployed copy is access-controlled; this one is not.';
+    document.body.appendChild(b);
+  }
+
   async function loadSession(){
-    if(CONFIG.backend!=='lambda') return null;
+    if(CONFIG.backend!=='lambda'){ markUngated(); return null; }
     try{
       const r = await fetch(CONFIG.authEndpoint+'/me', { credentials:'same-origin', cache:'no-store' });
       if(r.ok){ SESSION = await r.json(); applyIdentity(); }

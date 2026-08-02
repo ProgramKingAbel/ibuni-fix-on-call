@@ -157,7 +157,10 @@ invite)
   P="$(printf '{"sub":"%s","iss":"foc-doc","pur":"invite","jti":"%s","exp":%d}' \
         "$email" "$JTI" $(( $(date +%s) + 86400 )) | b64u)"
   G="$(printf '%s.%s' "$H" "$P" | openssl dgst -sha256 -hmac "$SESSION_CURRENT" -binary | b64u)"
-  echo "https://$(dist_domain)/enter?t=$H.$P.$G"
+  # Must be /api/enter, not /enter: any other path falls to the default
+  # CloudFront behaviour, whose session gate bounces it to /login before the
+  # Lambda ever sees it.
+  echo "https://$(dist_domain)/api/enter?t=$H.$P.$G"
   echo "(valid 24h, single use — send over Signal/WhatsApp, not email)"
   ;;
 

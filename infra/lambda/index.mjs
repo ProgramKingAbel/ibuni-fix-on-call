@@ -430,7 +430,10 @@ export const handler = async (event) => {
       const raw = readCookie(event, COOKIE);
       return json(200, { ok: true, token: !raw ? 'none' : (verifyToken(raw) ? 'valid' : 'invalid') });
     }
-    if (path === '/enter'           && method === 'GET')  return await enter(event);
+    // MUST live under /api/ — anything else falls to the default CloudFront
+    // behaviour, whose viewer-request function bounces it to /login before it
+    // ever reaches this Lambda, making the invite link useless.
+    if (path === '/api/enter'       && method === 'GET')  return await enter(event);
 
     if (path === '/api/comments') {
       const session = verifyToken(readCookie(event, COOKIE));
