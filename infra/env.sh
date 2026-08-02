@@ -21,7 +21,16 @@ export ROLE="foc-doc-api-role"
 export CFFUNC="foc-session-gate"
 export APIGW="foc-doc-api-gw"
 export FROM_DOMAIN="notify.getfixoncall.com"
-export FROM_ADDR="no-reply@${FROM_DOMAIN}"
+# Sender address. The domain identity is the goal, but it needs DNS records on
+# getfixoncall.com (currently served by Vercel, and not accessible to us). Until
+# then SES runs in sandbox with a single verified ADDRESS as the sender, stored
+# in infra/.sender. Delete that file once the domain verifies.
+if [ -f "$ROOT/infra/.sender" ]; then
+  FROM_ADDR="$(tr -d ' \r\n' < "$ROOT/infra/.sender")"
+else
+  FROM_ADDR="no-reply@${FROM_DOMAIN}"
+fi
+export FROM_ADDR
 
 # --- identity guard ----------------------------------------------------------
 # `aws login` sessions expire mid-task; fail here with a clear message rather

@@ -17,3 +17,6 @@ infra/lambda/node_modules
 # source material — contains vendor/commercial detail kept off the page
 source/
 *.mhtml
+
+# sandbox sender address (environment-specific, not a secret)
+infra/.sender

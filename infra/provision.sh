@@ -70,7 +70,8 @@ cat > "$TMPD/foc-policy.json" <<JSON
     { "Sid": "SendOtpOnly", "Effect": "Allow",
       "Action": ["ses:SendEmail"],
       "Resource": "*",
-      "Condition": { "StringEquals": { "ses:FromAddress": "${FROM_ADDR}" } } }
+      "Condition": { "StringEquals": { "ses:FromAddress": [
+        "${FROM_ADDR}", "no-reply@${FROM_DOMAIN}" ] } } }
   ]
 }
 JSON
