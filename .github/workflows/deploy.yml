@@ -1,0 +1,184 @@
+name: deploy
+
+# Auto-deploy the document on every push to main that touches something shipped.
+# Infrastructure is deliberately NOT managed here — provision.sh stays a human
+# action, and the CI role has no permission to create or delete resources.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'login/**'
+      - 'versions/**'
+      - 'infra/lambda/**'
+      - 'infra/cf-session-gate.js'
+      - 'infra/build.mjs'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:          # manual re-deploy from the Actions tab
+
+concurrency:
+  group: deploy-main          # never let two deploys race the CloudFront ETag
+  cancel-in-progress: false
+
+permissions:
+  id-token: write             # required to request the OIDC token
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  BUCKET_PREFIX: foc-doc
+  FUNC: foc-doc-api
+  CFFUNC: foc-session-gate
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 2 }     # depth 2 so the anchor gate can diff against HEAD~1
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      - name: Syntax
+        run: |
+          node -e "
+            const fs=require('fs');
+            const grab=(f,o)=>{const h=fs.readFileSync(f,'utf8');
+              fs.writeFileSync(o,[...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(x=>x[1]).join('\n'));};
+            grab('index.html','/tmp/page.js'); grab('login/index.html','/tmp/login.js');"
+          node --check /tmp/page.js
+          node --check /tmp/login.js
+          node --check infra/lambda/index.mjs
+          node --check infra/build.mjs
+
+      - name: CSS brace balance
+        run: |
+          node -e "
+            const s=require('fs').readFileSync('index.html','utf8');
+            const css=s.slice(s.indexOf('<style>')+7, s.indexOf('</style>'));
+            const o=(css.match(/{/g)||[]).length, c=(css.match(/}/g)||[]).length;
+            if(o!==c){ console.error('CSS braces '+o+' open / '+c+' close'); process.exit(1); }
+            console.log('ok — '+o+' balanced');"
+
+      - name: Edge gate — forged-token matrix
+        run: node infra/test/edge-gate.test.mjs infra/cf-session-gate.js
+
+      - name: Lambda ↔ edge agreement
+        run: node infra/test/cross-verifier.test.mjs infra/lambda/index.mjs infra/cf-session-gate.js
+
+      - name: No secrets in shipped files
+        run: |
+          if grep -qE "sharedSecret|x-shared-secret" index.html; then
+            echo "index.html still references a shared secret"; exit 1; fi
+          if git ls-files --error-unmatch infra/.session-secret 2>/dev/null; then
+            echo "infra/.session-secret is tracked by git"; exit 1; fi
+          echo "ok"
+
+      - name: Anchor stability
+        # Comment anchor ids hash each element's ancestor chain, so a structural
+        # change inside #doc-content orphans stored comments. Warn, don't block —
+        # an intentional content edit is legitimate and must not wedge the deploy.
+        continue-on-error: true
+        run: |
+          git show HEAD~1:index.html > /tmp/prev.html 2>/dev/null || exit 0
+          node infra/test/anchor-gate.mjs /tmp/prev.html index.html
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve stack
+        id: stack
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="${BUCKET_PREFIX}-${ACCOUNT}"
+          DIST=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(to_string(Origins.Items[].DomainName), '${BUCKET}')].Id | [0]" \
+            --output text)
+          DOMAIN=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(to_string(Origins.Items[].DomainName), '${BUCKET}')].DomainName | [0]" \
+            --output text)
+          [ "$DIST" != "None" ] || { echo "no distribution found — run infra/provision.sh"; exit 1; }
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "dist=$DIST"     >> $GITHUB_OUTPUT
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          echo "→ $DIST ($DOMAIN)"
+
+      - name: Build
+        env:
+          CUR: ${{ secrets.SESSION_SECRET }}
+          PRV: ${{ secrets.SESSION_PREV }}
+        run: |
+          [ -n "$CUR" ] || { echo "SESSION_SECRET is not set in repository secrets"; exit 1; }
+          node infra/build.mjs "$PWD" "$CUR" "$PRV"
+
+      - name: Upload site
+        run: |
+          B=${{ steps.stack.outputs.bucket }}
+          aws s3 cp dist/index.html       "s3://$B/index.html"       --content-type 'text/html; charset=utf-8' --cache-control 'no-cache'
+          aws s3 cp login/index.html      "s3://$B/login/index.html" --content-type 'text/html; charset=utf-8' --cache-control 'no-cache'
+          aws s3 cp login/index.html      "s3://$B/login"            --content-type 'text/html; charset=utf-8' --cache-control 'no-cache'
+          if compgen -G "versions/*.html" > /dev/null; then
+            aws s3 sync versions "s3://$B/versions" --content-type 'text/html; charset=utf-8' --cache-control 'no-cache' --delete
+          fi
+
+      - name: Update Lambda
+        run: |
+          cd infra/lambda && zip -q -j function.zip index.mjs && cd -
+          aws lambda update-function-code --function-name "$FUNC" \
+            --zip-file fileb://infra/lambda/function.zip > /dev/null
+          aws lambda wait function-updated --function-name "$FUNC"
+
+      - name: Publish edge function
+        run: |
+          ETAG=$(aws cloudfront describe-function --name "$CFFUNC" --query ETag --output text)
+          aws cloudfront update-function --name "$CFFUNC" \
+            --function-config 'Comment="Fix On Call session gate",Runtime=cloudfront-js-2.0' \
+            --function-code fileb://dist/cf-session-gate.js --if-match "$ETAG" > /dev/null
+          ETAG2=$(aws cloudfront describe-function --name "$CFFUNC" --query ETag --output text)
+          aws cloudfront publish-function --name "$CFFUNC" --if-match "$ETAG2" > /dev/null
+
+      - name: Invalidate
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ steps.stack.outputs.dist }} \
+            --paths '/index.html' '/' '/login' '/login/*' '/versions/*' > /dev/null
+
+      - name: Smoke test
+        env:
+          CUR: ${{ secrets.SESSION_SECRET }}
+        run: |
+          D="https://${{ steps.stack.outputs.domain }}"
+          sleep 20                       # let the edge pick up the published function
+          fail=0
+          chk(){ if [ "$2" = "$3" ]; then echo "  ok   $1 ($3)"; else echo "  FAIL $1 — want $2, got $3"; fail=$((fail+1)); fi; }
+          b64u(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          H=$(printf '{"alg":"HS256","typ":"JWT"}' | b64u)
+          P=$(printf '{"sub":"ci@smoke","iss":"foc-doc","exp":%d}' $(( $(date +%s) + 600 )) | b64u)
+          G=$(printf '%s.%s' "$H" "$P" | openssl dgst -sha256 -hmac "$CUR" -binary | b64u)
+          TOK="$H.$P.$G"
+          code(){ curl -s -o /dev/null -w '%{http_code}' "$@"; }
+
+          chk "no cookie → login"        302 "$(code "$D/")"
+          chk "login page public"        200 "$(code "$D/login")"
+          chk "bad signature rejected"   302 "$(code -H "Cookie: __Host-focs=${TOK%?}X" "$D/")"
+          chk "valid token serves doc"   200 "$(code -H "Cookie: __Host-focs=$TOK" "$D/")"
+          chk "api rejects no cookie"    401 "$(code "$D/api/comments?doc_version=v0.1")"
+          # The one that catches an edge/Lambda secret desync.
+          chk "api accepts same token"   200 "$(code -H "Cookie: __Host-focs=$TOK" "$D/api/comments?doc_version=v0.1")"
+
+          if [ "$fail" -gt 0 ]; then
+            echo "::error::$fail smoke test(s) failed — the deployed stack is not healthy"
+            exit 1
+          fi
+          echo "deployed: $D"

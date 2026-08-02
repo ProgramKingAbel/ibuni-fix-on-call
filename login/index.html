@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Fix On Call — sign in</title>
+<style>
+  /* Deliberately self-contained: the main stylesheet lives inside the gated
+     object, so this page cannot reference it. Brand tokens duplicated by hand. */
+  :root{
+    --navy:#0B1220; --navy-deep:#080B14; --red:#FF4D3A; --red-ink:#CE3320;
+    --paper:#F6F7F9; --card:#FFFFFF; --ink:#111826; --ink-soft:#4B5565; --line:#DDE2E9;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--sans);background:var(--navy-deep);color:#fff;
+    min-height:100dvh;display:flex;align-items:center;justify-content:center;
+    padding:24px calc(20px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+    -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+    background-image:
+      radial-gradient(ellipse 70% 50% at 80% 5%, rgba(255,77,58,.22) 0%, transparent 60%),
+      linear-gradient(160deg,var(--navy) 0%,var(--navy-deep) 72%);
+  }
+  .box{width:100%;max-width:400px}
+  .brand{display:flex;align-items:center;gap:11px;margin-bottom:28px}
+  .mark{width:34px;height:34px;border-radius:9px;background:var(--navy);position:relative;overflow:hidden;flex-shrink:0}
+  .mark::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 72% 28%,var(--red) 0%,transparent 58%)}
+  .mark span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:1rem}
+  .brand b{font-size:1.1rem;font-weight:700;letter-spacing:-.01em}
+  .card{background:var(--card);color:var(--ink);border-radius:16px;padding:30px 26px;box-shadow:0 30px 70px -30px rgba(0,0,0,.7)}
+  h1{font-size:1.32rem;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+  p.sub{font-size:.92rem;color:var(--ink-soft);line-height:1.55;margin-bottom:22px}
+  label{display:block;font-size:.74rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--red-ink);margin-bottom:7px}
+  input{
+    width:100%;font:inherit;font-size:16px;color:var(--ink);   /* 16px — under it iOS zooms the page on focus */
+    background:var(--paper);border:1px solid var(--line);border-radius:10px;
+    padding:13px 14px;margin-bottom:14px;
+  }
+  input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(255,77,58,.16);background:#fff}
+  #code{letter-spacing:.42em;font-size:22px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+  button{
+    width:100%;background:var(--navy);color:#fff;border:none;border-radius:10px;
+    padding:14px;font:inherit;font-weight:600;font-size:.96rem;cursor:pointer;
+    min-height:50px;transition:background .2s,transform .12s;
+  }
+  button:hover{background:var(--navy-deep)}
+  button:active{transform:scale(.985)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .msg{font-size:.88rem;line-height:1.5;margin-top:14px;padding:11px 13px;border-radius:9px;display:none}
+  .msg.show{display:block}
+  .msg.err{background:#FEECEA;color:#8C2417;border:1px solid #F6C9C2}
+  .msg.ok{background:#EAF6F0;color:#1C5C42;border:1px solid #C3E4D5}
+  .back{background:none;border:none;color:var(--ink-soft);font:inherit;font-size:.85rem;
+    text-decoration:underline;cursor:pointer;padding:10px;margin-top:6px;width:auto;min-height:auto}
+  .back:hover{color:var(--navy);background:none}
+  .foot{margin-top:20px;font-size:.76rem;color:#7C8AA3;text-align:center;line-height:1.5}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="brand"><span class="mark"><span>F</span></span><b>Fix On Call</b></div>
+
+  <div class="card">
+    <!-- step 1 — email -->
+    <form id="f-email">
+      <h1>Sign in</h1>
+      <p class="sub">This document is confidential and limited to named recipients.
+        Enter your email and we'll send you a 6-digit access code.</p>
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" inputmode="email"
+             placeholder="you@example.com" required autofocus>
+      <button type="submit" id="b-email">Send access code</button>
+    </form>
+
+    <!-- step 2 — code -->
+    <form id="f-code" class="hide">
+      <h1>Enter your code</h1>
+      <p class="sub">We've sent a 6-digit code to <strong id="to"></strong>.
+        It expires in 10 minutes.</p>
+      <label for="code">Access code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="6" placeholder="000000" required>
+      <button type="submit" id="b-code">Sign in</button>
+      <button type="button" class="back" id="b-back">Use a different email</button>
+    </form>
+
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <p class="foot">Fix On Call — Platform Overview · Confidential</p>
+</div>
+
+<script>
+(function(){
+  var API   = '/api';
+  var fEmail= document.getElementById('f-email');
+  var fCode = document.getElementById('f-code');
+  var msg   = document.getElementById('msg');
+  var email = '';
+
+  // Where to land after signing in. Only ever a same-origin absolute path, so a
+  // crafted ?r=https://evil.example cannot turn this into an open redirect.
+  function target(){
+    var r = new URLSearchParams(location.search).get('r') || '/';
+    return (r.charAt(0) === '/' && r.charAt(1) !== '/') ? r : '/';
+  }
+
+  function say(text, kind){
+    msg.textContent = text;
+    msg.className = 'msg show ' + (kind || 'err');
+  }
+  function clear(){ msg.className = 'msg'; }
+
+  async function post(path, body){
+    var res = await fetch(API + path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return { ok: res.ok, status: res.status, data: await res.json().catch(function(){ return {}; }) };
+  }
+
+  fEmail.addEventListener('submit', async function(e){
+    e.preventDefault();
+    clear();
+    var b = document.getElementById('b-email');
+    email = document.getElementById('email').value.trim().toLowerCase();
+    if(!email) return;
+    b.disabled = true; b.textContent = 'Sending…';
+    try{
+      await post('/auth/start', { email: email });
+      // Deliberately identical whether or not the address is on the list — the
+      // page must not become an address-enumeration oracle.
+      document.getElementById('to').textContent = email;
+      fEmail.className = 'hide';
+      fCode.className = '';
+      say('If that address is on the list, a code is on its way.', 'ok');
+      document.getElementById('code').focus();
+    }catch(err){
+      say('Could not reach the server. Check your connection and try again.');
+    }
+    b.disabled = false; b.textContent = 'Send access code';
+  });
+
+  fCode.addEventListener('submit', async function(e){
+    e.preventDefault();
+    clear();
+    var b = document.getElementById('b-code');
+    var code = document.getElementById('code').value.trim();
+    if(!/^\d{6}$/.test(code)){ say('Enter the 6-digit code from your email.'); return; }
+    b.disabled = true; b.textContent = 'Signing in…';
+    try{
+      var r = await post('/auth/verify', { email: email, code: code });
+      if(r.ok){
+        say('Signed in. Opening the document…', 'ok');
+        location.href = target();
+        return;
+      }
+      say('That code is not valid. It may have expired — request a new one.');
+    }catch(err){
+      say('Could not reach the server. Check your connection and try again.');
+    }
+    b.disabled = false; b.textContent = 'Sign in';
+  });
+
+  document.getElementById('b-back').addEventListener('click', function(){
+    fCode.className = 'hide'; fEmail.className = ''; clear();
+    document.getElementById('code').value = '';
+    document.getElementById('email').focus();
+  });
+
+  /* Desync detector. If we hold an unexpired session hint but the edge sent us
+     here anyway, the CloudFront Function and the Lambda disagree about the
+     signing secret. Without this the user just loops through login forever and
+     it looks like a cookie bug. */
+  (function(){
+    var m = document.cookie.match(/(?:^|;\s*)__Host-focs_exp=(\d+)/);
+    if(m && Number(m[1]) > Math.floor(Date.now()/1000)){
+      say('Your session exists but is not being accepted. This is a server configuration '
+        + 'issue, not something you can fix — please contact the administrator.', 'err');
+    }
+  })();
+})();
+</script>
+</body>
+</html>

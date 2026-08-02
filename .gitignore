@@ -1,16 +1,18 @@
 .DS_Store
 Thumbs.db
 
-# secrets & build artifacts — never commit
-.shared-secret
-.page-credentials
+# secrets — never commit
+infra/.session-secret
 infra/.shared-secret
 infra/.page-credentials
+
+# Build artifacts. dist/cf-session-gate.js carries the session signing keys and
+# dist/.tmp holds scratch policy documents, so this MUST stay ignored.
+# NB: keep comments on their own line — a trailing "# ..." after a pattern is
+# treated as part of the pattern, which silently un-ignores it.
+dist/
 infra/lambda/function.zip
 infra/lambda/node_modules
-
-# built deploy artifact (would contain the injected secret)
-dist/
 
 # source material — contains vendor/commercial detail kept off the page
 source/

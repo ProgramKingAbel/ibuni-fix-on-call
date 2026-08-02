@@ -118,8 +118,9 @@ In-page commenting is **anchored, versioned, and backed by a swappable storage a
   `current:false` with its `file`, and add the new entry with `current:true`. Open comments
   auto-carry-forward into the newest version.
 - **Dev helpers:** `FOC.clearComments()`, `FOC.clearComments('v0.1')`, `FOC.dumpComments()`.
-- **Access / spam:** gate the page itself (shared passcode) and rate-limit the endpoint; the
-  name field is self-entered, not authentication.
+- **Access / spam:** the page is gated per-user at the CloudFront edge and the endpoint is
+  rate-limited (see "Deployment & access control"). On the deployed backend the comment author
+  comes from the verified session; the self-entered name field applies only to `local` dev.
 
 ---
 
@@ -295,9 +296,37 @@ worth re-creating are:
 The end-to-end test that only a browser can do: **place a comment, reload, confirm the badge is
 still there** — and place one on desktop, then open on mobile, and confirm it resolves.
 
-## Deployment (not yet done)
+## Deployment & access control
 
-Not deployed. When it is: static site → private object storage + CDN, password-gated at the
-edge; comments via a small function + a table behind a shared secret. Set `CONFIG.backend` to
-`'lambda'` and inject `endpoint` + `sharedSecret` at deploy time (never commit them).
-`serve.mjs` has a commented-out `/api` proxy stub for local development against that backend.
+Built, not yet provisioned. **Full detail is in `infra/README.md`** — this is the summary.
+
+S3 + CloudFront, with per-user login. A **CloudFront Function verifies an HS256 session cookie
+at the edge**, so S3 never serves a byte to an unauthenticated request and the document stays
+one self-contained inline file. Three behaviours on one distribution: `/login*` public,
+`/api/*` → Lambda, everything else gated.
+
+- **Login is a 6-digit code emailed via SES**, not a magic link. Corporate mail gateways click
+  links to scan them, consuming one-time tokens; and links opened in Outlook/iOS Mail land in
+  an in-app webview with its own cookie jar. The OTP email contains **no links at all**.
+- **The allowlist is the `__members` partition** of the DynamoDB table — one list, no drift.
+  `./infra/members.sh add <email> "<name>" "<role>"`.
+- **Cognito was considered and rejected**: CloudFront Functions cannot verify RS256 so we mint
+  our own token regardless, and Cognito's free sender can't achieve DKIM alignment. The swap
+  surface if that changes is ~60 lines in two auth routes.
+- **`CONFIG.sharedSecret` is gone.** The session cookie authenticates the *user*, so nothing
+  sensitive is injected into the built page — `dist/index.html` is no longer a secret artifact.
+  `dist/cf-session-gate.js` **is** (it carries the signing keys); both are gitignored.
+- Because `/api/*` is same-origin via CloudFront, **there is no CORS anywhere**.
+
+**Comment authorship is now server-side.** The Lambda ignores the client's `author_name` and
+writes it from the member record, plus `author_email` from the token. This supersedes the note
+above that the name field is self-entered — that is now true only on the `local` dev backend.
+
+`serve.mjs`'s commented-out `/api` proxy stub still works for local development against the
+deployed backend.
+
+### Session lifetime and revocation
+
+7 days, sliding. Stateless, so removing someone stops comments and re-login immediately but
+read access persists until their cookie expires. To cut that off now:
+`./infra/rotate-secret.sh --force` (everyone re-authenticates once).

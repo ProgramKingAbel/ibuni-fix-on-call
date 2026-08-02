@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- the page loads Google Fonts; without this, the document URL is sent to a
+     third party as a Referer on every load -->
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow,noarchive">
 <title>Fix On Call — Platform Overview</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -505,6 +509,24 @@
     opacity:0;visibility:hidden;transition:opacity .3s;
   }
   .cmt-rail-backdrop.show{opacity:1;visibility:visible}
+
+  /* ---------- verified identity ---------- */
+  .cmt-asyou{
+    font-size:.82rem;color:var(--ink-soft);background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:8px;
+  }
+  .cmt-asyou strong{color:var(--navy);font-weight:700}
+  /* per-user watermark — injected client-side from the session, never baked into
+     the cached object, so every reader gets the same bytes from S3 */
+  .foc-wm{
+    position:fixed;left:10px;bottom:8px;z-index:5;pointer-events:none;user-select:none;
+    font-size:.62rem;letter-spacing:.04em;color:var(--ink-soft);opacity:.45;
+  }
+  @media(max-width:768px){ .foc-wm{display:none} }   /* the action bar owns that corner */
+  @media print{
+    .foc-wm{position:fixed;bottom:6mm;left:6mm;opacity:.6;font-size:8pt;color:#444}
+    .cmt-fab,.mob-bar,.cmt-rail,.cmt-pop,nav{display:none!important}
+  }
 
   /* popover backdrop — separate element from the rail's, which owns closeRail() */
   .cmt-pop-backdrop{
@@ -1822,16 +1844,20 @@
   /* ====================================================================
      COMMENTING  —  anchored · versioned · swappable storage
      --------------------------------------------------------------------
-     Edit CONFIG to switch backend. Build/test runs on LocalStore (in
-     browser, no server). To go live on a hosted backend, set
-     backend:'lambda' and fill endpoint + sharedSecret (see CLAUDE.md).
+     Edit CONFIG to switch backend. Local dev runs on LocalStore (in
+     browser, no server, self-entered name). On the deployed site
+     infra/build.mjs flips backend to 'lambda' and points the two paths at
+     the same-origin API, where the session cookie authenticates the user
+     and the server owns the comment author. See infra/README.md.
      ==================================================================== */
   const CONFIG = {
     backend: 'local',                 // 'local' | 'lambda'
-    endpoint: '',                     // Lambda Function URL (when backend:'lambda')
-    sharedSecret: '',                 // x-shared-secret header value
+    endpoint: '',                     // '/api/comments' — same-origin via CloudFront, so no CORS
+    authEndpoint: '',                 // '/api'          — session routes
     currentVersion: 'v0.1',           // the version this file's content represents
   };
+  // No shared secret any more: the session cookie authenticates the *user*, not
+  // the page, so nothing sensitive is injected into the built artifact.
 
   /* ---- Document versions (in-file content snapshots) -----------------
      Each entry is one document version. `current:true` marks the version
@@ -1862,11 +1888,23 @@
     async bulkAdd(recs){ const all=this._all(); recs.forEach(r=>all.push(r)); this._save(all); return recs; },
   };
 
-  // Lambda adapter — Function URL + shared-secret header. (Stub until deployed.)
+  // Thrown on 401 so callers can tell "your session ended" from "the request failed".
+  class SessionError extends Error { constructor(){ super('session expired'); this.name='SessionError'; } }
+
+  // Lambda adapter — same-origin via CloudFront, authenticated by the session
+  // cookie. No shared secret, and no CORS because /api/* is served from the same
+  // distribution as the page.
   const LambdaStore = {
     async _f(method, body, qs){
       const url = CONFIG.endpoint + (qs?('?'+qs):'');
-      const res = await fetch(url, { method, headers:{ 'content-type':'application/json', 'x-shared-secret':CONFIG.sharedSecret }, body: body?JSON.stringify(body):undefined });
+      const res = await fetch(url, {
+        method,
+        credentials:'same-origin',        // the __Host-focs cookie rides along
+        cache:'no-store',
+        headers:{ 'content-type':'application/json' },
+        body: body?JSON.stringify(body):undefined,
+      });
+      if(res.status===401){ onSessionExpired(); throw new SessionError(); }
       if(!res.ok) throw new Error('comment store '+res.status);
       return res.json();
     },
@@ -1929,6 +1967,68 @@
 
   const NAME_KEY='foc_name';
   const rememberedName = () => localStorage.getItem(NAME_KEY)||'';
+
+  /* ====================================================================
+     SESSION  —  verified identity from the auth backend
+     --------------------------------------------------------------------
+     On the deployed site the page is only served to an authenticated
+     reader (a CloudFront Function verifies the session cookie at the
+     edge), so by the time this runs the user is known. /api/me returns
+     who they are, which becomes the comment author.
+
+     The client label is cosmetic: the Lambda overwrites author_name from
+     the member record and stores author_email. Otherwise this would be a
+     name badge, not authentication.
+
+     On the local backend SESSION stays null and the free-text name field
+     is used, exactly as before — dev is unaffected.
+     ==================================================================== */
+  let SESSION = null;
+
+  async function loadSession(){
+    if(CONFIG.backend!=='lambda') return null;
+    try{
+      const r = await fetch(CONFIG.authEndpoint+'/me', { credentials:'same-origin', cache:'no-store' });
+      if(r.ok){ SESSION = await r.json(); applyIdentity(); }
+    }catch(e){ /* offline — the document still reads, comments will 401 */ }
+    return SESSION;
+  }
+
+  // Per-user watermark. The only real deterrent against an authorised reader
+  // forwarding a screenshot. Injected client-side and never baked into the S3
+  // object, so the cached HTML stays byte-identical for everyone.
+  function applyIdentity(){
+    if(!SESSION || document.getElementById('foc-wm')) return;
+    const fm = document.querySelector('.foot-meta');
+    if(fm){
+      const d = document.createElement('div');
+      d.innerHTML = '<span>Accessed by</span><b>'+esc(SESSION.email)+'</b>';
+      fm.appendChild(d);
+    }
+    const wm = document.createElement('div');
+    wm.id='foc-wm'; wm.className='foc-wm';
+    wm.textContent = 'Confidential · '+SESSION.email+' · '+new Date().toISOString().slice(0,10);
+    document.body.appendChild(wm);
+  }
+
+  function onSessionExpired(){
+    SESSION = null;
+    const back = encodeURIComponent(location.pathname + location.search);
+    setVerNote('Your session has expired — reload to sign in again. Any comment you were writing is saved.');
+    const note = document.getElementById('ver-note');
+    if(note && !note.querySelector('a')){
+      const a = document.createElement('a');
+      a.href = '/login?r='+back; a.textContent = ' Sign in';
+      a.style.cssText = 'color:var(--red-bright);margin-left:10px;font-weight:600';
+      note.appendChild(a);
+    }
+  }
+
+  // Cheap liveness check — no polling. A tab left open overnight discovers the
+  // expiry when it's brought back to the front, not on the next click.
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible' && CONFIG.backend==='lambda') loadSession();
+  });
 
   /* ---- Auto carry-forward ------------------------------------------- */
   // When viewing the newest version, copy still-open comments from the
@@ -2003,7 +2103,9 @@
       +'<button class="cmt-x" aria-label="Close">×</button></div>'
       +'<div class="cmt-list">'+(list.length?list.map(renderItem).join(''):'<div class="cmt-empty">No comments yet on this block.</div>')+'</div>'
       +'<form class="cmt-form" autocomplete="off">'
-      +'<input name="name" placeholder="Your name" value="'+esc(rememberedName())+'" maxlength="80" required>'
+      +(SESSION
+          ? '<div class="cmt-asyou">Commenting as <strong>'+esc(SESSION.name||SESSION.email)+'</strong></div>'
+          : '<input name="name" placeholder="Your name" value="'+esc(rememberedName())+'" maxlength="80" required>')
       +'<textarea name="body" placeholder="Add a comment or question…" maxlength="2000" required></textarea>'
       +'<button type="submit" class="cmt-submit">Add comment</button></form>';
     placePopover(el);
@@ -2012,9 +2114,17 @@
     pop.querySelector('.cmt-x').onclick=closePopover;
     pop.querySelector('form').onsubmit=onSubmit;
     pop.querySelectorAll('[data-act]').forEach(b=>b.onclick=onItemAct);
+    // restore a draft stranded by a failed submit on this same block
+    const draft=readDraft();
+    if(draft && draft.anchor_id===aid){
+      const ta=pop.querySelector('textarea'); if(ta) ta.value=draft.body;
+      const nm=pop.querySelector('input[name=name]'); if(nm && draft.author_name) nm.value=draft.author_name;
+    }
     // no autofocus on mobile — the keyboard would cover the thread before it's read
     if(!isMobile()){
-      const ta=pop.querySelector('textarea'); if(rememberedName()) ta.focus(); else pop.querySelector('input').focus();
+      const nameInput=pop.querySelector('input[name=name]');
+      const ta=pop.querySelector('textarea');
+      if(nameInput && !rememberedName()) nameInput.focus(); else if(ta) ta.focus();
     }
   }
   function renderItem(c){
@@ -2034,14 +2144,37 @@
     await Store.update(id, { status: act==='resolve'?'resolved':'open' });
     await refresh(); if(popFor) openPopover(popFor);
   }
+  /* A failed submit must never lose what the user typed. The previous version
+     disabled the button and never re-enabled it, so a network blip or an expired
+     session stranded the text with no way to retry. */
+  const DRAFT_KEY='foc_draft';
+  const readDraft = () => { try{ return JSON.parse(sessionStorage.getItem(DRAFT_KEY)||'null'); }catch{ return null; } };
+
   async function onSubmit(e){
     e.preventDefault();
-    const f=e.target, name=f.name.value.trim(), body=f.body.value.trim();
+    const f=e.target;
+    const body=f.body.value.trim();
+    // With a verified session the name comes from the server, not the form.
+    const name = SESSION ? (SESSION.name||SESSION.email) : (f.name ? f.name.value.trim() : '');
     if(!name||!body) return;
     const btn=f.querySelector('.cmt-submit'); btn.disabled=true;
-    localStorage.setItem(NAME_KEY,name);
-    await Store.add({ anchor_id:popFor.getAttribute('data-comment-id'), anchor_label:popFor.getAttribute('data-comment-label'), doc_version:activeVersion, author_name:name, body });
-    await refresh(); openPopover(popFor);
+    const rec={
+      anchor_id:popFor.getAttribute('data-comment-id'),
+      anchor_label:popFor.getAttribute('data-comment-label'),
+      doc_version:activeVersion, author_name:name, body,
+    };
+    try{
+      if(!SESSION) localStorage.setItem(NAME_KEY,name);
+      await Store.add(rec);
+      sessionStorage.removeItem(DRAFT_KEY);
+      await refresh(); openPopover(popFor);
+    }catch(err){
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(rec));   // keep the text
+      btn.disabled=false;
+      if(!(err instanceof SessionError)){
+        setVerNote('Could not save that comment — it is kept here, try again.');
+      }
+    }
   }
   function placePopover(el){
     if(isMobile()){
@@ -2555,6 +2688,7 @@
 
   /* ---- Boot --------------------------------------------------------- */
   (async function boot(){
+    await loadSession();                            // who is reading — drives comment authorship
     initContent();                                  // wire the live (current) content
     syncChrome(); updateSpy();                      // measure chrome, set the first active chip
     const v=VERSIONS.find(x=>x.id===activeVersion);
