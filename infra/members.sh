@@ -161,7 +161,8 @@ invite)
   # CloudFront behaviour, whose session gate bounces it to /login before the
   # Lambda ever sees it.
   echo "https://$(dist_domain)/api/enter?t=$H.$P.$G"
-  echo "(valid 24h, single use — send over Signal/WhatsApp, not email)"
+  echo "(valid 24h, single use. Safe to paste into WhatsApp/Signal: opening"
+  echo " the link only shows a confirm page; it is spent on the button press.)"
   ;;
 
 log)

@@ -38,9 +38,16 @@ the domain — see [Email status](#email-status)). Use an invite link.
 ./infra/members.sh invite sariabarnabas@gmail.com
 ```
 
-Prints one link. Send it over WhatsApp. It is **single-use** and valid **24
-hours**; opening it signs that person in for **7 days**, and that session renews
-itself every time they open the document. So:
+Prints one link. Send it over WhatsApp. Valid **24 hours**, **single-use**.
+
+Opening the link shows a confirmation page; the link is only spent when they
+press **Open the document**. That two-step is deliberate — **messaging apps fetch
+every URL you paste to build a link preview**, and a link consumed on open would
+be dead before the recipient ever tapped it. (That is exactly what happened the
+first time round.) Pasting into WhatsApp is safe.
+
+Pressing the button signs them in for **7 days**, and that session renews itself
+every time they open the document. So:
 
 - They only need a new link if they wait more than 24h to open it, go a full week
   without reading, clear cookies, **or switch to another device or browser**.
@@ -190,8 +197,8 @@ detail in [`infra/README.md`](infra/README.md#ses--current-state-sandbox-address
 | Symptom | What to do |
 |---|---|
 | Signs in, then bounces back to `/login` | The edge and the API disagree on the signing secret. Run `./infra/deploy.sh` — its smoke test names this exact failure. |
-| An invite link goes to `/login?used=1` | Already opened. Mint a new one. |
-| An invite link goes to `/login` with no `used` | Expired (>24h). Mint a new one. |
+| x |
+| Invite says "Link not valid" | Expired (>24h). Mint a new one. |
 | Someone can't get a code | Spam folder first; otherwise `./infra/members.sh code <email>` and read it out. |
 | You deployed and nothing changed | CloudFront cache. `deploy.sh` invalidates automatically; give it a minute. |
 | **Locked out entirely** | `aws s3 presign s3://foc-doc-094429135337/index.html --expires-in 900` — a 15-minute link that bypasses CloudFront using your AWS credentials. |

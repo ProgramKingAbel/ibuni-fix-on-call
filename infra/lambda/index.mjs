@@ -6,7 +6,8 @@
  *   POST /api/auth/verify  { email, code }         → { email, name, role } + Set-Cookie
  *   POST /api/auth/logout                          → clears the cookies
  *   GET  /api/me                                   → { email, name, role, exp }
- *   GET  /enter?t=<token>                          → break-glass invite, 302 to /
+ *   GET  /api/enter?t=<token>                      → invite interstitial (does NOT consume)
+ *   POST /api/enter  t=<token>                     → consumes it, 302 to / with a session
  *
  * Comment routes (unchanged contract from the front-end storage adapter)
  *   GET  /api/comments?doc_version=v0.1            → { comments: [...] }
@@ -293,26 +294,107 @@ async function me(event) {
   return json(200, out);
 }
 
-// Break-glass: a single-use signed invite, sent over Signal/WhatsApp when a mail
-// gateway is hostile. Same HMAC machinery, separate purpose claim so a session
-// token can never be replayed here and vice versa.
-async function enter(event) {
+/* Break-glass: a single-use signed invite, sent over Signal/WhatsApp when email
+ * is unreliable. Same HMAC machinery, with a separate `pur` claim so a session
+ * token can never be replayed here or vice versa.
+ *
+ * TWO-STEP ON PURPOSE. A GET only *previews* the invite; the POST consumes it.
+ *
+ * Messaging apps fetch every URL you paste to build a link preview, and mail
+ * gateways fetch links to scan them. A single-use link consumed on GET is
+ * therefore dead before the recipient ever taps it — observed exactly that,
+ * with invites burned minutes after being pasted into a chat. This is the same
+ * failure that ruled out magic links by email; it applies just as much to a
+ * link sent over WhatsApp. Preview fetchers issue GET, never POST, so putting
+ * consumption behind a real button click closes it.
+ */
+const htmlPage = (code, body) => ({
+  statusCode: code,
+  headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+  body,
+});
+
+const enterPage = (title, message, tokenOrNull, who) => htmlPage(200, `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
+<title>Fix On Call — sign in</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ background:#080B14;color:#fff;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
+ background-image:radial-gradient(ellipse 70% 50% at 80% 5%,rgba(255,77,58,.22) 0%,transparent 60%),linear-gradient(160deg,#0B1220,#080B14 72%)}
+.c{width:100%;max-width:380px;background:#fff;color:#111826;border-radius:16px;padding:32px 26px;box-shadow:0 30px 70px -30px rgba(0,0,0,.7)}
+h1{font-size:1.3rem;margin-bottom:10px}
+p{font-size:.95rem;color:#4B5565;line-height:1.55;margin-bottom:22px}
+b{color:#111826}
+button{width:100%;background:#0B1220;color:#fff;border:none;border-radius:10px;padding:15px;
+ font:inherit;font-weight:600;font-size:1rem;cursor:pointer;min-height:52px}
+button:active{transform:scale(.985)}
+.m{margin-top:18px;font-size:.82rem;color:#7C8AA3;text-align:center}
+</style></head><body><div class="c">
+<h1>${title}</h1>
+<p>${message}</p>
+${tokenOrNull ? `<form method="POST" action="/api/enter">
+  <input type="hidden" name="t" value="${tokenOrNull}">
+  <button type="submit">Open the document</button></form>
+  <div class="m">Signing in as ${who}</div>` : ''}
+</div></body></html>`);
+
+const bounce = (to) => ({ statusCode: 302, headers: { location: to, 'cache-control': 'no-store' } });
+
+async function enterPreview(event) {
   const t = event.queryStringParameters?.t || '';
   const p = verifyToken(t);
-  const home = { statusCode: 302, headers: { location: '/', 'cache-control': 'no-store' } };
-  if (!p || p.pur !== 'invite') return { statusCode: 302, headers: { location: '/login', 'cache-control': 'no-store' } };
-
+  if (!p || p.pur !== 'invite') {
+    return enterPage('Link not valid',
+      'This invitation link is not valid or has expired. Ask for a new one.', null, '');
+  }
   const used = await ddb.send(new GetCommand({ TableName: TABLE, Key: { anchor_id: '__invite', sort_key: p.jti || '' } }));
-  if (used.Item) return { statusCode: 302, headers: { location: '/login?used=1', 'cache-control': 'no-store' } };
+  if (used.Item) {
+    return enterPage('Already used',
+      'This invitation has already been used. Each link works once — ask for a new one.', null, '');
+  }
   const member = await getMember(p.sub);
-  if (!member) return { statusCode: 302, headers: { location: '/login', 'cache-control': 'no-store' } };
+  if (!member) {
+    return enterPage('No longer authorised',
+      'This address is not on the access list for this document.', null, '');
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return enterPage('Fix On Call — Platform Overview',
+    'This document is confidential and limited to named recipients. Tap below to open it.',
+    esc(t), `<b>${esc(member.name || p.sub)}</b>`);
+}
 
-  await ddb.send(new PutCommand({
-    TableName: TABLE,
-    Item: { anchor_id: '__invite', sort_key: p.jti, used_at: now(), expires_at: now() + 30 * 86400 },
-  }));
-  console.log(JSON.stringify({ evt: 'invite-used', email: p.sub, ts: new Date().toISOString() }));
-  return { ...home, cookies: sessionCookies(mintToken(p.sub), TTL_DAYS * 86400) };
+async function enterConsume(event) {
+  // Body is form-encoded from the interstitial's button.
+  let raw = event.body || '';
+  if (event.isBase64Encoded) raw = Buffer.from(raw, 'base64').toString('utf8');
+  let t = '';
+  try { t = new URLSearchParams(raw).get('t') || ''; } catch { t = ''; }
+  if (!t) { try { t = JSON.parse(raw).t || ''; } catch { /* not JSON either */ } }
+
+  const p = verifyToken(t);
+  if (!p || p.pur !== 'invite') return bounce('/login');
+
+  const member = await getMember(p.sub);
+  if (!member) return bounce('/login');
+
+  // Conditional write IS the single-use guarantee — two simultaneous taps
+  // cannot both succeed.
+  try {
+    await ddb.send(new PutCommand({
+      TableName: TABLE,
+      Item: { anchor_id: '__invite', sort_key: p.jti, used_at: now(), expires_at: now() + 30 * 86400 },
+      ConditionExpression: 'attribute_not_exists(sort_key)',
+    }));
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') return bounce('/login?used=1');
+    throw e;
+  }
+
+  console.log(JSON.stringify({ evt: 'invite-used', email: p.sub,
+    ip: event.requestContext?.http?.sourceIp, ts: new Date().toISOString() }));
+  return { ...bounce('/'), cookies: sessionCookies(mintToken(p.sub), TTL_DAYS * 86400) };
 }
 
 /* ---------------- comments (inherited contract, now cookie-gated) ----------- */
@@ -409,8 +491,10 @@ export const handler = async (event) => {
   if (!SECRET || !PEPPER) { console.error('SESSION_SECRET / OTP_PEPPER not configured'); return json(500, { error: 'server error' }); }
 
   try {
+    // Every POST is JSON except /api/enter, which receives a form submit from
+    // the interstitial page and parses its own body.
     let body = {};
-    if (method === 'POST') {
+    if (method === 'POST' && path !== '/api/enter') {
       try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'bad json' }); }
     }
 
@@ -430,10 +514,12 @@ export const handler = async (event) => {
       const raw = readCookie(event, COOKIE);
       return json(200, { ok: true, token: !raw ? 'none' : (verifyToken(raw) ? 'valid' : 'invalid') });
     }
-    // MUST live under /api/ � anything else falls to the default CloudFront
+    // MUST live under /api/ - anything else falls to the default CloudFront
     // behaviour, whose viewer-request function bounces it to /login before it
     // ever reaches this Lambda, making the invite link useless.
-    if (path === '/api/enter'       && method === 'GET')  return await enter(event);
+    // GET previews (safe for link-preview bots to fetch), POST consumes.
+    if (path === '/api/enter'       && method === 'GET')  return await enterPreview(event);
+    if (path === '/api/enter'       && method === 'POST') return await enterConsume(event);
 
     if (path === '/api/comments') {
       const session = verifyToken(readCookie(event, COOKIE));
