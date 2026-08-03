@@ -342,17 +342,37 @@ ${tokenOrNull ? `<form method="POST" action="/api/enter">
 
 const bounce = (to) => ({ statusCode: 302, headers: { location: to, 'cache-control': 'no-store' } });
 
+// Does this request already carry a working session? Used to decide whether an
+// exhausted invite should still let someone in.
+async function hasLiveSession(event) {
+  const s = verifyToken(readCookie(event, COOKIE));
+  if (!s) return false;
+  return !!(await getMember(s.sub));
+}
+
 async function enterPreview(event) {
   const t = event.queryStringParameters?.t || '';
   const p = verifyToken(t);
+
+  /* If this device already holds a valid session, the link is just a bookmark —
+     send them straight in, whatever state the invite is in. People re-tap the
+     WhatsApp message because they don't remember the URL, and refusing them
+     when they are already signed in is friction with no security benefit: the
+     redirect grants nothing the cookie did not already carry. */
+  if (await hasLiveSession(event)) return bounce('/');
+
   if (!p || p.pur !== 'invite') {
     return enterPage('Link not valid',
       'This invitation link is not valid or has expired. Ask for a new one.', null, '');
   }
   const used = await ddb.send(new GetCommand({ TableName: TABLE, Key: { anchor_id: '__invite', sort_key: p.jti || '' } }));
   if (used.Item) {
+    // Reaching here means the invite is spent AND this device has no session —
+    // so it really is a different browser or an expired one.
     return enterPage('Already used',
-      'This invitation has already been used. Each link works once — ask for a new one.', null, '');
+      'This invitation has already been used, and this device is not signed in. '
+      + 'If you have opened the document on another device it still works there. '
+      + 'Otherwise ask for a new link.', null, '');
   }
   const member = await getMember(p.sub);
   if (!member) {
@@ -388,7 +408,12 @@ async function enterConsume(event) {
       ConditionExpression: 'attribute_not_exists(sort_key)',
     }));
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') return bounce('/login?used=1');
+    if (e.name === 'ConditionalCheckFailedException') {
+      // Spent — but if this device is already signed in, just let them through
+      // rather than bouncing someone who plainly has access.
+      if (await hasLiveSession(event)) return bounce('/');
+      return bounce('/login?used=1');
+    }
     throw e;
   }
 
