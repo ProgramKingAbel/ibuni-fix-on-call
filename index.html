@@ -601,15 +601,33 @@
     .phase{padding:0 0 34px 42px}
     .phase-dot{left:5px;top:3px;width:20px;height:20px;border-width:3px}
 
-    /* --- native app chrome: slim brand row + pinned section chip rail ------ */
-    .nav-inner{padding:8px 20px;gap:6px}
+    /* --- native app chrome: slim brand row + pinned section chip rail ------
+       Everything in the top row must be able to SHRINK. Flex items default to
+       min-width:auto, so the version <select> (sized by its longest option,
+       "v0.1 — Draft for review") pushed the row wider than the viewport and the
+       comments button fell off the right edge. */
+    .nav-inner{padding:6px 14px;gap:4px;padding-top:calc(6px + env(safe-area-inset-top))}
+    .nav-row-top{gap:10px;min-width:0}
+    .brand{min-width:0;flex:1 1 auto;gap:8px}
+    .brand-mark{width:26px;height:26px;border-radius:7px}
+    .brand-mark span{font-size:.8rem}
+    .brand-word{font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    .cmt-nav{gap:8px;flex:0 0 auto}
+    .ver-switch select{
+      max-width:80px;min-height:36px;padding:6px 4px 6px 7px;
+      text-overflow:ellipsis;                 /* the native picker still shows it in full */
+    }
+    /* icon + count only — the word is redundant next to a speech bubble */
+    .cmt-toggle{min-height:36px;padding:6px 9px;gap:5px}
+    .cmt-toggle .tlabel{display:none}
+    .cmt-toggle svg{width:17px;height:17px}
+    .cmt-toggle .tcount{font-size:.68rem;padding:0 5px}
     .nav-row-top{transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s;will-change:transform}
     /* hide the brand row on scroll-down, reveal on scroll-up. The chip rail stays
        pinned so --chrome-h remains measurable (a transform doesn't resize the box). */
     nav.nav-up .nav-row-top{transform:translateY(-100%);opacity:0;pointer-events:none;
       height:0;margin-bottom:-6px;overflow:hidden}
-    .brand-word{font-size:.98rem}
-    .nav-row-links{padding-top:6px}
+    .nav-row-links{padding-top:5px}
     .nav-links{
       flex-wrap:nowrap;overflow-x:auto;gap:6px;
       scroll-snap-type:x proximity;scroll-padding-inline:20px;
@@ -620,8 +638,8 @@
     .nav-links::-webkit-scrollbar{display:none}
     .nav-links a{
       flex:0 0 auto;scroll-snap-align:center;
-      padding:9px 14px;min-height:40px;display:flex;align-items:center;
-      font-size:.82rem;border-radius:20px;background:var(--card);
+      padding:8px 13px;min-height:38px;display:flex;align-items:center;
+      font-size:.8rem;border-radius:19px;background:var(--card);
       border:1px solid var(--line);color:var(--ink-soft);white-space:nowrap;
       transition:background .2s,color .2s,border-color .2s;
     }
@@ -827,8 +845,8 @@
           <select id="ver-select" aria-label="Document version"></select>
         </label>
         <button class="cmt-toggle" id="cmt-toggle" aria-pressed="false" aria-label="Toggle comments panel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 01-8.5 8.5 8.5 8.5 0 01-3.8-.9L3 21l1.9-5.7A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.38 8.38 0 0121 11.5z"/></svg>
-          Comments<span class="tcount" id="cmt-tcount" hidden>0</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 01-8.5 8.5 8.5 8.5 0 01-3.8-.9L3 21l1.9-5.7A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.38 8.38 0 0121 11.5z"/></svg><span
+          class="tlabel">Comments</span><span class="tcount" id="cmt-tcount" hidden>0</span>
         </button>
       </div>
     </div>
@@ -2147,17 +2165,26 @@
       if(nameInput && !rememberedName()) nameInput.focus(); else if(ta) ta.focus();
     }
   }
+  // Owner-only on the deployed backend; always on for local dev, which has no session.
+  const canResolve = () => CONFIG.backend!=='lambda' || !!(SESSION && SESSION.owner);
+
   function renderItem(c){
     return '<div class="cmt-item'+(c.status==='resolved'?' resolved':'')+'">'
       +'<div class="cmt-item-top"><span class="cmt-author">'+esc(c.author_name)+'</span>'
       +'<span class="cmt-when">'+fmt(c.created_at)+'</span>'
       +(c.carried_from?'<span class="cmt-carry">carried</span>':'')+'</div>'
       +'<div class="cmt-body">'+esc(c.body)+'</div>'
-      +'<div class="cmt-acts">'
-      +(c.status==='resolved'
-          ? '<button data-act="reopen" data-id="'+c.id+'">Reopen</button>'
-          : '<button data-act="resolve" data-id="'+c.id+'">Resolve</button>')
-      +'</div></div>';
+      // Resolving is owner-only, and the server enforces it (403 otherwise) —
+      // this just avoids showing a button that would fail. On the local dev
+      // backend there is no session, so keep it available.
+      +(canResolve()
+        ? '<div class="cmt-acts">'
+          +(c.status==='resolved'
+              ? '<button data-act="reopen" data-id="'+c.id+'">Reopen</button>'
+              : '<button data-act="resolve" data-id="'+c.id+'">Resolve</button>')
+          +'</div>'
+        : '')
+      +'</div>';
   }
   async function onItemAct(e){
     const id=e.target.getAttribute('data-id'), act=e.target.getAttribute('data-act');

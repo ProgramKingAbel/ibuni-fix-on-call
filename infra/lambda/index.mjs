@@ -284,7 +284,8 @@ async function me(event) {
   const member = await getMember(p.sub);
   if (!member) return json(401, { error: 'unauthenticated' });   // removed since issue
 
-  const out = { email: p.sub, name: member.name || p.sub, role: member.role || '', exp: p.exp };
+  const out = { email: p.sub, name: member.name || p.sub, role: member.role || '',
+                owner: member.owner === true, exp: p.exp };
   // Sliding session: if the token is more than a day old, mint a fresh one so an
   // active reader never has to re-authenticate.
   const maxAge = TTL_DAYS * 86400;
@@ -447,6 +448,11 @@ async function comments(event, method, session, member) {
   try { b = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'bad json' }); }
 
   if (b.op === 'update') {
+    /* Resolving is owner-only. Comments are feedback FROM the executive team;
+       deciding a piece of feedback is dealt with belongs to whoever owns the
+       document. Enforced here, not just hidden in the UI — the client's
+       "Resolve" button is a convenience, this is the control. */
+    if (member.owner !== true) return json(403, { error: 'not permitted' });
     if (!b.id || !b.patch) return json(400, { error: 'id and patch required' });
     // `id` is a DynamoDB reserved word — must be aliased. No Limit: it applies
     // before the filter and could skip the match.

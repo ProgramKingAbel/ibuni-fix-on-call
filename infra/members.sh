@@ -5,6 +5,7 @@
 #   ./infra/members.sh list
 #   ./infra/members.sh add     <email> "<name>" "<role>" [days]
 #   ./infra/members.sh edit    <email> "<name>" "<role>"   # change name/role in place
+#   ./infra/members.sh owner   <email> [on|off] # may resolve comments (default on)
 #   ./infra/members.sh disable <email>         # revoke access, KEEP the record
 #   ./infra/members.sh enable  <email>         # restore access
 #   ./infra/members.sh expire  <email> <days>  # time-box access (or 0 to clear)
@@ -36,6 +37,7 @@ list)
       (.name.S // "-"),
       (.role.S // "-"),
       (if .active.BOOL == false then "INACTIVE" else "active" end),
+      (if .owner.BOOL == true then "owner" else "-" end),
       (if .expires_at then "expires " + (.expires_at.N|tonumber|todate) else "no expiry" end)
     ] | @tsv' | column -t -s $'\t'
   ;;
@@ -73,6 +75,22 @@ edit)
     --expression-attribute-values "{\":n\":{\"S\":\"$name\"},\":r\":{\"S\":\"$role\"}}" >/dev/null \
     && echo "updated $email → $name${role:+, $role}" \
     || echo "ERROR: $email is not on the allowlist (use 'add')" >&2
+  ;;
+
+owner)
+  # Grant or revoke the ability to resolve comments. Everyone can read and
+  # comment; only an owner can mark feedback resolved.
+  #   ./infra/members.sh owner <email> [on|off]
+  email="$(echo "${2:?email required}" | tr '[:upper:]' '[:lower:]')"
+  val=$([ "${3:-on}" = "off" ] && echo false || echo true)
+  aws dynamodb update-item --table-name "$TABLE" \
+    --key "{\"anchor_id\":{\"S\":\"__members\"},\"sort_key\":{\"S\":\"$email\"}}" \
+    --update-expression 'SET #o = :o' \
+    --condition-expression 'attribute_exists(sort_key)' \
+    --expression-attribute-names '{"#o":"owner"}' \
+    --expression-attribute-values "{\":o\":{\"BOOL\":$val}}" >/dev/null \
+    && echo "$email owner=$val" \
+    || { echo "ERROR: $email is not on the allowlist" >&2; exit 1; }
   ;;
 
 disable|enable)
