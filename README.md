@@ -197,8 +197,8 @@ detail in [`infra/README.md`](infra/README.md#ses--current-state-sandbox-address
 | Symptom | What to do |
 |---|---|
 | Signs in, then bounces back to `/login` | The edge and the API disagree on the signing secret. Run `./infra/deploy.sh` — its smoke test names this exact failure. |
-| x |
-| Invite says "Link not valid" | Expired (>24h). Mint a new one. |
+| Invite says "Already used" | Someone pressed the button already. Mint a new one. |
+| Invite says "Link not valid" | Expired (>24h), or the token is malformed. Mint a new one. |
 | Someone can't get a code | Spam folder first; otherwise `./infra/members.sh code <email>` and read it out. |
 | You deployed and nothing changed | CloudFront cache. `deploy.sh` invalidates automatically; give it a minute. |
 | **Locked out entirely** | `aws s3 presign s3://foc-doc-094429135337/index.html --expires-in 900` — a 15-minute link that bypasses CloudFront using your AWS credentials. |
