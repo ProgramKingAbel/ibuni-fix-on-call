@@ -510,6 +510,29 @@
   }
   .cmt-rail-backdrop.show{opacity:1;visibility:visible}
 
+  /* ---------- horizontal-scroller arrows ----------
+     Injected by JS and APPENDED to the scroller's parent — appending never
+     changes an existing element's sibling index, so comment anchors are
+     untouched. Vertically centred on the scroller via a --sc-mid custom
+     property the JS keeps in sync (an inline style is an attribute, which the
+     anchor hash ignores). */
+  .hs-arrow{
+    position:absolute;z-index:6;top:var(--sc-mid,50%);transform:translateY(-50%);
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--line);
+    background:rgba(255,255,255,.94);color:var(--navy);
+    display:none;align-items:center;justify-content:center;cursor:pointer;padding:0;
+    box-shadow:0 4px 14px -4px rgba(8,11,20,.3);
+    transition:opacity .2s,transform .12s;
+  }
+  .hs-arrow svg{width:18px;height:18px;pointer-events:none}
+  .hs-arrow.prev{left:-4px}
+  .hs-arrow.next{right:-4px}
+  .hs-arrow[disabled]{opacity:0;pointer-events:none}
+  .hs-arrow:active{transform:translateY(-50%) scale(.9)}
+  .hs-host{position:relative}
+  @media(max-width:768px){ .hs-arrow.on{display:flex} }
+  @media print{ .hs-arrow{display:none!important} }
+
   /* ---------- verified identity ---------- */
   .cmt-asyou{
     font-size:.82rem;color:var(--ink-soft);background:var(--card);
@@ -1637,6 +1660,59 @@
     if(link && isMobile() && navLinks) centreIn(navLinks,link);
   }
 
+  /* ---- arrows for horizontally-scrolling card rails --------------------
+     A snap carousel with no visible control is easy to miss, so each one gets
+     a prev/next pair. They are APPENDED to the scroller's parent: appending
+     never shifts an existing element's sibling index, so the comment-anchor
+     hashes inside these cards are unaffected. Idempotent — safe to re-run
+     after a version swap or a breakpoint change. */
+  const HS_SEL = '#doc-content .svc-grid, #doc-content .partner-grid, #doc-content .flow-track';
+  const ARROW_L = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+  const ARROW_R = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+
+  function wireHScroll(){
+    document.querySelectorAll(HS_SEL).forEach(sc=>{
+      const host = sc.parentElement;
+      if(!host) return;
+      host.classList.add('hs-host');
+
+      let prev = host.querySelector(':scope > .hs-arrow.prev');
+      let next = host.querySelector(':scope > .hs-arrow.next');
+      if(!prev){
+        prev = document.createElement('button');
+        prev.type='button'; prev.className='hs-arrow prev';
+        prev.setAttribute('aria-label','Scroll left'); prev.innerHTML=ARROW_L;
+        next = document.createElement('button');
+        next.type='button'; next.className='hs-arrow next';
+        next.setAttribute('aria-label','Scroll right'); next.innerHTML=ARROW_R;
+        host.append(prev, next);          // append only — never insert before
+        const step = () => Math.max(160, Math.round(sc.clientWidth * 0.8));
+        prev.addEventListener('click',()=>{ sc.scrollBy({left:-step(),behavior:'smooth'}); haptic(6); });
+        next.addEventListener('click',()=>{ sc.scrollBy({left: step(),behavior:'smooth'}); haptic(6); });
+        sc.addEventListener('scroll',()=>syncHScroll(sc),{passive:true});
+      }
+      syncHScroll(sc);
+    });
+  }
+
+  // Show the pair only when there is somewhere to go, and grey out each end.
+  function syncHScroll(sc){
+    const host = sc.parentElement; if(!host) return;
+    const prev = host.querySelector(':scope > .hs-arrow.prev');
+    const next = host.querySelector(':scope > .hs-arrow.next');
+    if(!prev || !next) return;
+    const overflows = sc.scrollWidth - sc.clientWidth > 8;
+    prev.classList.toggle('on', overflows);
+    next.classList.toggle('on', overflows);
+    if(!overflows) return;
+    // centre the arrows on the rail, not on the whole block
+    host.style.setProperty('--sc-mid', (sc.offsetTop + sc.offsetHeight/2) + 'px');
+    prev.disabled = sc.scrollLeft <= 4;
+    next.disabled = sc.scrollLeft >= sc.scrollWidth - sc.clientWidth - 4;
+  }
+  const syncAllHScroll = () => document.querySelectorAll(HS_SEL).forEach(syncHScroll);
+  addEventListener('resize', syncAllHScroll);
+
   /* Scroll a horizontal rail so `el` is centred, WITHOUT scrolling the page.
      scrollIntoView() would scroll every scrollable ancestor including the
      document, which yanks the page vertically. Shared by the nav chip strip
@@ -2387,6 +2463,7 @@
     assignAnchors();
     wireTooltips();
     wireLifecycle();
+    wireHScroll();
     if(swapped) document.querySelectorAll('#doc-content .reveal').forEach(el=>el.classList.add('in'));
   }
 
@@ -2737,6 +2814,7 @@
     }
     if(popFor && pop.classList.contains('show')){ pop.style.transform=''; placePopover(popFor); }
     if(placing) showPlaceTarget(lastHot);
+    syncAllHScroll();                            // rails overflow on mobile, not on desktop
     activeLink=null; updateSpy();               // force a re-centre of the chip
     if(lcSteps.length && isMobile()){
       const track=document.querySelector('.flow-track');

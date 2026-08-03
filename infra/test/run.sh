@@ -75,6 +75,22 @@ else
   echo "  ok   infra/.session-secret is not tracked"
 fi
 
+# --- runtime DOM injection must only ever APPEND -------------------------------
+# Comment anchor ids hash each element's index among its same-tag siblings.
+# Appending leaves every existing index untouched; inserting before or
+# prepending shifts them and silently orphans stored comments. The static anchor
+# gate below cannot catch this, because runtime injection is not in the source
+# markup — so guard the API instead.
+echo
+echo "── runtime DOM injection"
+if grep -nE "insertBefore|\.prepend\(|insertAdjacent(HTML|Element)\('(afterbegin|beforebegin)'" index.html; then
+  echo "  FAIL index.html inserts DOM before existing nodes — this shifts sibling"
+  echo "       indices and orphans comment anchors. Append instead."
+  fail=$((fail+1))
+else
+  echo "  ok   no insert-before/prepend anywhere (append-only)"
+fi
+
 # --- anchor stability ----------------------------------------------------------
 # Comment anchor ids hash each element's ancestor chain, so any structural change
 # inside #doc-content orphans stored comments. Compare against the last commit.
