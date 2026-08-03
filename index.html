@@ -575,6 +575,12 @@
     .arch{margin-top:34px}
     .arch-group{margin-top:32px}
     .sys{padding:22px 20px}
+    /* The "System of record" pill is absolutely positioned top-right on desktop,
+       where the card is wide enough for it to sit beside the eyebrow. On a phone
+       the card is narrow and it landed on top of "Core · Fix On Call dispatch
+       platform". Put it back in normal flow — it is the first child, so it
+       stacks above the eyebrow naturally. */
+    .sys.sot .badge{position:static;display:inline-block;margin:0 0 12px}
     .comp-grid{margin-top:30px;gap:14px}
     .comp{padding:22px 20px}
     .comp-strip{margin-top:26px}
@@ -613,10 +619,9 @@
     .brand-mark span{font-size:.8rem}
     .brand-word{font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
     .cmt-nav{gap:8px;flex:0 0 auto}
-    .ver-switch select{
-      max-width:80px;min-height:36px;padding:6px 4px 6px 7px;
-      text-overflow:ellipsis;                 /* the native picker still shows it in full */
-    }
+    /* Short option text is set in JS on mobile, so nothing is truncated —
+       "v0.1 — Draft for review" rendered as an unreadable "v0…" at this width. */
+    .ver-switch select{min-height:36px;padding:6px 6px 6px 8px;max-width:none;width:auto}
     /* icon + count only — the word is redundant next to a speech bubble */
     .cmt-toggle{min-height:36px;padding:6px 9px;gap:5px}
     .cmt-toggle .tlabel{display:none}
@@ -1892,7 +1897,9 @@
      Comments are filtered by version, and open comments auto-carry-forward
      into the newest version.                                            */
   const VERSIONS = [
-    { id:'v0.1', label:'v0.1 — Draft for review', current:true, file:null },
+    // `short` is what the picker shows on mobile, where the full label does not
+    // fit and truncates to an unreadable "v0…". Keep it under ~12 characters.
+    { id:'v0.1', label:'v0.1 — Draft for review', short:'v0.1 Draft', current:true, file:null },
   ];
   const NEWEST = VERSIONS[VERSIONS.length-1].id;
 
@@ -2313,12 +2320,28 @@
   const docHost=document.getElementById('doc-content');
   const currentLiveHTML=docHost?docHost.innerHTML:'';   // pristine current content
   const verSel=document.getElementById('ver-select');
-  VERSIONS.forEach(v=>{ const o=document.createElement('option'); o.value=v.id; o.textContent=v.label; verSel.appendChild(o); });
-  // honour ?v= on load (set when a switch needed a reload)
+  /* Two label widths. A native <select> shows the SELECTED option's text when
+     closed, and there is no room on a phone for "v0.1 — Draft for review" — it
+     rendered as an unreadable "v0…". `short` is used on mobile; the full label
+     stays on desktop and in the title attribute either way. */
+  const verShort = v => v.short || v.id;
+  function fillVersions(){
+    const mob = isMobile();
+    verSel.innerHTML='';
+    VERSIONS.forEach(v=>{
+      const o=document.createElement('option');
+      o.value=v.id; o.textContent = mob ? verShort(v) : v.label; o.title=v.label;
+      verSel.appendChild(o);
+    });
+    verSel.value=activeVersion;
+    verSel.title = (VERSIONS.find(v=>v.id===activeVersion)||{}).label || activeVersion;
+  }
+  // honour ?v= on load (set when a switch needed a reload) BEFORE filling, so
+  // the select and its title reflect the version actually being shown
   const params=new URLSearchParams(location.search);
   const wanted=params.get('v');
   if(wanted && VERSIONS.some(v=>v.id===wanted)) activeVersion=wanted;
-  verSel.value=activeVersion;
+  fillVersions();
 
   verSel.onchange=async()=>{
     const target=verSel.value;
@@ -2701,6 +2724,7 @@
      of JS-held state that differ between modes. */
   mq.addEventListener('change',()=>{
     hideTip();                                   // anchored vs card — just dismiss
+    fillVersions();                              // short labels on mobile, full on desktop
     syncChrome();
     if(!isMobile()){
       releaseScrollLock(true);
